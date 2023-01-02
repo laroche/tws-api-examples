@@ -19,6 +19,8 @@
 # - Use also ARCA as exchange?
 # - List of exchanges? GLOBEX, CMECRYPTO, ECBOT, NYMEX
 # - Check: https://interactivebrokers.github.io/tws-api/contract_details.html
+# - Check time delta handling: hourly data for 2023 contains some hours from 2022.
+# - Does hourly data make sense? Often half hour data is part of RTH. ???
 #
 # pylint: disable=C0103,C0114,C0116,C0413,C0415,W0603,W0614
 #
@@ -256,11 +258,11 @@ def write_some_stocks(ib):
 
 def write_some_stocks2(ib):
     # CSCO FTRCQ IEP RDS.B
-    stocks = ['APLE', 'BTI', 'CIM', 'CVET', 'D', 'DUK', 'ENB', 'ENDP', 'EPD',
-        'EPR', 'ETRN', 'FAX', 'GE', 'GTY', 'HBI', 'JCOM', 'JNJ', 'KHC', 'LMT',
-        'LTC', 'M', 'MA', 'MAIN', 'MDP', 'MMM', 'MMP', 'MO', 'MPW', 'OPI',
+    stocks = ['APLE', 'BTI', 'CIM', 'D', 'DUK', 'ENB', 'EPD',
+        'EPR', 'ETRN', 'FAX', 'GE', 'GTY', 'HBI', 'JNJ', 'KHC', 'LMT',
+        'LTC', 'M', 'MA', 'MAIN', 'MMM', 'MMP', 'MO', 'MPW', 'OPI',
         'OZK', 'PM', 'PPL', 'PRU', 'SKT', 'TEVA', 'TSN', 'UHS', 'V',
-        'VLO', 'WB', 'WPG', 'WSR']
+        'VLO', 'WB', 'WSR']
     for stock in stocks:
         writeIT(ib, stock, 'SMART', 'USD')
 
