@@ -306,6 +306,26 @@ def usage():
         '[--host=127.0.0.1][--port=7496][--client-id=0]' +
         '[--help][--verbose][--debug][--quiet]')
 
+def show_account(ib):
+    if True:
+        portfolio = ib.portfolio()
+        if portfolio:
+            print('Portfolio:')
+            for p in portfolio:
+                print(p)
+    if True:
+        positions = ib.positions()
+        if positions:
+            print('Positions:')
+            for p in positions:
+                print(p)
+    if True:
+        trades = ib.trades()
+        if trades:
+            print('Trades:')
+            for t in trades:
+                print(t)
+
 def main(argv):
     global tables, csv_dir
     import getopt
@@ -370,9 +390,7 @@ def main(argv):
     except ConnectionRefusedError:
         sys.exit(1)
 
-    #ib.portfolio()
-    #ib.positions()
-    #ib.trades()
+    #show_account(ib)
 
     open_db()
     tables = getDbTables()
