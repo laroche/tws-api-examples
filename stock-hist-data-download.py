@@ -299,7 +299,7 @@ def write_nasdaq_stocks(ib):
         writeIT(ib, stock, exchange, 'USD', False)
 
 def usage():
-    print('test2.py ' +
+    print('stock-hist-data-download.py ' +
         '[--list-index][--data-dir=data]' +
         '[--host=127.0.0.1][--port=7496][--client-id=0]' +
         '[--help][--verbose][--debug][--quiet]')
