@@ -333,12 +333,12 @@ def main(argv):
 
     # Connect params to your Interactive Brokers (IB) TWS:
     host = '127.0.0.1'
-    port = 7496
+    port = 7496 # 7497 is for the paper account
     client_id = 0
 
     try:
         opts, args = getopt.getopt(argv, 'dhqv', ['list-index', 'help',
-            'host=', 'port=', 'client_id='
+            'host=', 'port=', 'client-id='
             'data-dir=', 'quiet', 'verbose', 'debug'])
     except getopt.GetoptError:
         usage()

@@ -5,14 +5,13 @@ TWS API examples for Interactive Brokers (IB)
 trading software [Trader Workstation (TWS)](https://www.interactivebrokers.com/en/trading/tws.php)
 through their [TWS API](https://interactivebrokers.github.io/tws-api/).
 
-Here some collection of sample scripts to try this out.
-
 
 Enable TWS API access for your local computer
 ---------------------------------------------
 
 You first need to start TWS on your computer and within the settings menue you have to
 enable TWS API access for your "localhost" network interface (127.0.0.1) on port 7496.
+For paper trading this is port 7497 per default.
 This allows to run scripts on the same machine you run TWS on.
 
 Check this: <https://interactivebrokers.github.io/tws-api/initial_setup.html>.
@@ -49,8 +48,8 @@ pip3 install --upgrade ib_insync
 python library pandas
 ---------------------
 
-[pandas](https://pandas.pydata.org/) is a useful additional python library often used
-to manage data.
+[pandas](https://pandas.pydata.org/) is a useful additional python library
+for data analysis and manipulation.
 
 Install on Debian or Ubuntu Linux with:
 <pre>
@@ -62,11 +61,16 @@ Or you can install via pip3:
 pip3 install pandas
 </pre>
 
+For updates run:
+<pre>
+pip3 install --upgrade pandas
+</pre>
+
 
 historic stock data download
 ----------------------------
 
-Example script which downloads hostoric stock data for all
+Example script which downloads historic stock data for all
 companies of the DOW, SP500 and Nasdaq100 indices.
 
 See [stock-hist-data-download.py](stock-hist-data-download.py).
