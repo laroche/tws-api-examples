@@ -21,6 +21,8 @@
 # - Check: https://interactivebrokers.github.io/tws-api/contract_details.html
 # - Check time delta handling: hourly data for 2023 contains some hours from 2022.
 # - Does hourly data make sense? Often half hour data is part of RTH. ???
+# - Configuration: allow env config settings for TWS connection and separate config file.
+# - Robust constantly running prog with re-connects to TWS to allow automatic trading.
 #
 # pylint: disable=C0103,C0114,C0116,C0413,C0415,W0603,W0614
 #
@@ -148,7 +150,10 @@ engine = None
 def open_db():
     global engine
     if not csv_dir:
-        return
+        return True
+    if not os.path.isdir(csv_dir):
+        print('Directory %s does not exist, please create it.' % csv_dir)
+        return False
     use_sqlalchemy = False
     if not use_sqlalchemy:
         import sqlite3
@@ -161,6 +166,14 @@ def open_db():
         #db_file = 'sqlite:///data/' + sql_filename
         db_file = os.path.join('sqlite:///' + csv_dir, sql_filename)
         engine = create_engine(db_file)
+    return True
+
+def close_db():
+    global engine
+    if not csv_dir:
+        return
+    engine.close()
+    engine = None
 
 tables = []
 
@@ -392,7 +405,8 @@ def main(argv):
 
     #show_account(ib)
 
-    open_db()
+    if not open_db():
+        sys.exit(3)
     tables = getDbTables()
     #print(tables)
     #trades = pd.read_sql(trades_query, self.dbconn)
@@ -405,6 +419,7 @@ def main(argv):
 
     #ib.sleep(10)
     ib.disconnect()
+    close_db()
 
 if __name__ == '__main__':
     main(sys.argv[1:])

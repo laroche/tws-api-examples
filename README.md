@@ -73,6 +73,9 @@ historic stock data download
 Example script which downloads historic stock data for all
 companies of the DOW, SP500 and Nasdaq100 indices.
 
+The data is stored into the subdirectory "data" per default,
+so please create this directory before calling this script.
+
 See [stock-hist-data-download.py](stock-hist-data-download.py).
 
 
