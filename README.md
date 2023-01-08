@@ -80,6 +80,12 @@ so please create this directory before calling this script.
 
 See [stock-hist-data-download.py](stock-hist-data-download.py).
 
+How to update the index list of the SP500 and Nasdaq100:
+<pre>
+python3 stock-hist-data-download.py --list-index > TMPFILE
+diff -u stock-hist-data-download.py TMPFILE
+</pre>
+
 
 links to similar / further projects
 -----------------------------------
