@@ -16,6 +16,8 @@ This allows to run scripts on the same machine you run TWS on.
 
 Check this: <https://interactivebrokers.github.io/tws-api/initial_setup.html>.
 
+One you start scripts onneting to your TWS, you can see also a new tab "API" on your TWS.
+
 
 Official TWS API software from IB
 ---------------------------------
