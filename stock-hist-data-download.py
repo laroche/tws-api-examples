@@ -320,6 +320,7 @@ def usage():
         '[--help][--verbose][--debug][--quiet]')
 
 def show_account(ib):
+    #print([v for v in ib.accountValues() if v.tag == 'NetLiquidationByCurrency' and v.currency == 'BASE'])
     if True:
         portfolio = ib.portfolio()
         if portfolio:
@@ -338,15 +339,24 @@ def show_account(ib):
             print('Trades:')
             for t in trades:
                 print(t)
+    if True:
+        orders = ib.orders()
+        if orders:
+            print('Orders:')
+            for o in orders:
+                print(o)
 
 def main(argv):
     global tables, csv_dir
     import getopt
     verbose = 1
 
-    # Connect params to your Interactive Brokers (IB) TWS:
+    # Connect params to your Interactive Brokers (IB) TWS or IB Gateway:
     host = '127.0.0.1'
-    port = 7496 # 7497 is for the paper account
+    #port = 7497 # TWS paper account (demo/test)
+    port = 7496 # TWS active/real/live account
+    #port = 4002 # IB Gateway paper account (demo/test)
+    #port = 4001 # IB Gateway active/real/live account
     client_id = 0
 
     try:

@@ -11,8 +11,11 @@ Enable TWS API access for your local computer
 
 You first need to start TWS on your computer and within the settings menue you have to
 enable TWS API access for your "localhost" network interface (127.0.0.1) on port 7496.
-For paper trading this is port 7497 per default.
+For paper trading (demo/test account) this is port 7497 per default.
 This allows to run scripts on the same machine you run TWS on.
+
+Instead of IB TWS, you can also use IB Gateway. This uses port 4002 per default for
+paper trading (demo/test account) and 4001 for an active/real/live account.
 
 Check this: <https://interactivebrokers.github.io/tws-api/initial_setup.html>.
 
@@ -34,7 +37,8 @@ Install ib_insync for python
 ----------------------------
 
 [ib_insync](https://github.com/erdewit/ib_insync) ist another python API to connect to your TWS
-with discussions at <https://groups.io/g/insync>.
+with docu at <https://ib-insync.readthedocs.io/> and
+discussions at <https://groups.io/g/insync>.
 
 To install ib_insync, first install python3 and then run:
 <pre>
