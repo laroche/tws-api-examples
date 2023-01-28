@@ -12,6 +12,7 @@
 # sudo apt-get install python3-sqlalchemy-utils
 #
 # TODO:
+# - Also support parquet fileformat in addition to csv: pd.read_parquet() pd.to_parquet().
 # - Cache also empty data returns?
 # - Note date of data download and date of last check
 # - Add account id into sql filename?
