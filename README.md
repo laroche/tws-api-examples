@@ -19,7 +19,7 @@ paper trading (demo/test account) and 4001 for an active/real/live account.
 
 Check this: <https://interactivebrokers.github.io/tws-api/initial_setup.html>.
 
-Once you start scripts conneting to your TWS, you can see also a new tab "API" on your TWS.
+Once you start scripts connecting to your TWS, you can see also a new tab "API" on your TWS.
 
 
 Official TWS API software from IB

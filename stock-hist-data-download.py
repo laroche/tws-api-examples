@@ -314,6 +314,39 @@ def write_nasdaq_stocks(ib):
         #exchange = 'NASDAQ'
         writeIT(ib, stock, exchange, 'USD', False)
 
+def getSPX():
+    return Index('SPX', 'CBOE', 'USD', description='SP500 Index')
+
+def getVIX():
+    return Index('VIX', 'CBOE', 'USD', description='CBOE Volatility Index')
+
+def getADNYSE():
+    return Index('AD-NYSE', 'NYSE', 'USD', description='NYSE Advance Decline Index')
+
+def getDAX():
+    return Index('DAX', 'EUREX', 'EUR', description='DAX Performance Index')
+
+def getVDAX():
+    return Index('VDAX', 'EUREX', 'EUR', description='German VDAX Volatility Index')
+
+def getSTOXX():
+    return Index('ESTX50', 'EUREX', 'EUR', description='Dow Jones Euro STOXX50')
+
+def getVSTOXX():
+    return Index('V2TX', 'EUREX', 'EUR', description='VSTOXX Volatility Index')
+
+def getHSI():
+    return Index('HSI', 'HKFE', 'HKD', description='Hang Seng Index')
+
+def getVHSI():
+    return Index('VHSI', 'HKFE', 'HKD', description='Hang Seng Volatility Index')
+
+def getMiniHSI():
+    return Index('MHI', 'HKFE', 'HKD', description='Mini Hang Seng Index')
+
+def getEURUSD():
+    return Forex('EURUSD')
+
 def usage():
     print('stock-hist-data-download.py ' +
         '[--list-index][--data-dir=data]' +
