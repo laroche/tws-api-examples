@@ -10,6 +10,7 @@
 #
 
 import sys
+import locale
 import logging
 import ib_insync
 
@@ -26,8 +27,8 @@ BASE = '€'
 
 def print_data(value):
     if value >= 980000:
-        return str(round(value / 1000)) + ' T'
-    return str(round(value)) + ' '
+        return locale.format_string("%d", round(value / 1000), grouping=True) + 'T'
+    return locale.format_string("%d", round(value), grouping=True)
 
 def show_account2(ib):
     #print([v for v in ib.accountValues()
@@ -110,6 +111,11 @@ def usage():
 def main(argv):
     import getopt
 
+    locale.setlocale(locale.LC_ALL, '')
+    #locale.setlocale(locale.LC_ALL, 'de_DE')
+    #print(locale.getlocale())
+    #for key, value in locale.localeconv().items():
+    #    print("%s: %s" % (key, value))
     #logger = logging.getLogger(__name__)
 
     verbose = 1
