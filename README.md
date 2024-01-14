@@ -90,6 +90,8 @@ python3 stock-hist-data-download.py --list-index > TMPFILE
 diff -u stock-hist-data-download.py TMPFILE
 </pre>
 
+Also check out <https://github.com/deltaray-io/ib_dl>.
+
 
 links to similar / further projects
 -----------------------------------
