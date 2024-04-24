@@ -6,7 +6,7 @@
 #
 # Required (tested on Debian 11 and 12):
 # sudo apt-get install python3-pandas
-# pip3 install ib_insync
+# pip3 install ib_async
 #
 # Old requirement:
 # sudo apt-get install python3-sqlalchemy-utils
@@ -34,7 +34,7 @@ import time
 import logging
 
 import pandas
-import ib_insync
+import ib_async
 
 
 # https://en.wikipedia.org/wiki/List_of_S%26P_500_companies
@@ -204,7 +204,7 @@ def getCsvFilename(table_name):
 
 # Convert IB data into pandas dataframe (df).
 def ConvertIB2Dataframe(bars):
-    df = ib_insync.util.df(bars)
+    df = ib_async.util.df(bars)
     df.set_index(['date'], inplace=True)
     return df
 
@@ -241,7 +241,7 @@ def writeIT2(ib, contract, stock, exchange, year, timespan, barSize, duration,
             tables.append(table_name)
 
 def writeIT(ib, stock, exchange, currency, hourly=True):
-    contract = ib_insync.Stock(stock, exchange, currency)
+    contract = ib_async.Stock(stock, exchange, currency)
     #details = ib.reqContractDetails(contract)
     #print(details)
     #if details.Contract.secType != 'STK':
@@ -434,19 +434,19 @@ def main(argv):
     #    usage()
     #    sys.exit()
 
-    ib_insync.util.allowCtrlC()
+    ib_async.util.allowCtrlC()
 
     if verbose == 0:
-        ib_insync.util.logToConsole(logging.ERROR)
+        ib_async.util.logToConsole(logging.ERROR)
     elif verbose == 1:
-        ib_insync.util.logToConsole(logging.WARNING)
+        ib_async.util.logToConsole(logging.WARNING)
     elif verbose == 2:
-        ib_insync.util.logToConsole(logging.INFO)
+        ib_async.util.logToConsole(logging.INFO)
     elif verbose >= 3:
-        ib_insync.util.logToConsole(logging.DEBUG)
-    #ib_insync.util.logToFile("ib.log", logging.WARNING)
+        ib_async.util.logToConsole(logging.DEBUG)
+    #ib_async.util.logToFile("ib.log", logging.WARNING)
 
-    ib = ib_insync.IB()
+    ib = ib_async.IB()
     try:
         ib.connect(host, port, clientId=client_id) # account
     except ConnectionRefusedError:

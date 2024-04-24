@@ -6,21 +6,21 @@
 # sudo apt-get install python3-rich python3-pandas
 # python3 -m venv venv
 # . venv/bin/activate
-# pip3 install ib_insync
+# pip3 install ib_async
 #
 
 import sys
 import locale
 import logging
-import ib_insync
+import ib_async
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-# Turn off some of the more annoying logging output from ib_insync
-#logging.getLogger("ib_insync.ib").setLevel(logging.ERROR)
-#logging.getLogger("ib_insync.wrapper").setLevel(logging.CRITICAL)
+# Turn off some of the more annoying logging output from ib_async
+#logging.getLogger("ib_async.ib").setLevel(logging.ERROR)
+#logging.getLogger("ib_async.wrapper").setLevel(logging.CRITICAL)
 
 # XXX How to detect base currency?
 BASE = '€'
@@ -155,19 +155,19 @@ def main(argv):
     #    usage()
     #    sys.exit()
 
-    ib_insync.util.allowCtrlC()
+    ib_async.util.allowCtrlC()
 
     if verbose == 0:
-        ib_insync.util.logToConsole(logging.ERROR)
+        ib_async.util.logToConsole(logging.ERROR)
     elif verbose == 1:
-        ib_insync.util.logToConsole(logging.WARNING)
+        ib_async.util.logToConsole(logging.WARNING)
     elif verbose == 2:
-        ib_insync.util.logToConsole(logging.INFO)
+        ib_async.util.logToConsole(logging.INFO)
     elif verbose >= 3:
-        ib_insync.util.logToConsole(logging.DEBUG)
-    #ib_insync.util.logToFile("ib.log", logging.WARNING)
+        ib_async.util.logToConsole(logging.DEBUG)
+    #ib_async.util.logToFile("ib.log", logging.WARNING)
 
-    ib = ib_insync.IB()
+    ib = ib_async.IB()
     try:
         ib.connect(host, port, clientId=client_id) # account=, timeout=
     except ConnectionRefusedError:

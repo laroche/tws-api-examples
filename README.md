@@ -33,21 +33,22 @@ Discussions around the TWS API are best on <https://groups.io/g/twsapi>.
 Please also check the FAQ at: <https://dimon.ca/dmitrys-tws-api-faq/>.
 
 
-Install ib_insync for python
-----------------------------
+Install ib_async for python
+---------------------------
 
-[ib_insync](https://github.com/erdewit/ib_insync) ist another python API to connect to your TWS
-with docu at <https://ib-insync.readthedocs.io/> and
+[ib_async](https://github.com/ib-api-reloaded/ib_async) is another python API to connect to your TWS
+with docu at <https://ib-api-reloaded.github.io/ib_async/api.html> and
 discussions at <https://groups.io/g/insync>.
+(Original project at <https://github.com/erdewit/ib_insync>.)
 
-To install ib_insync, first install python3 and then run:
+To install ib_async, first install python3 and then run:
 <pre>
-pip3 install ib_insync
+pip3 install ib_async
 </pre>
 
-To update ib_insync later on, run:
+To update ib_async later on, run:
 <pre>
-pip3 install --upgrade ib_insync
+pip3 install --upgrade ib_async
 </pre>
 
 
