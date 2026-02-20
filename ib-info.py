@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
 #
-# Copyright (C) 2023 Florian La Roche <Florian.LaRoche@gmail.com>
+# Copyright (C) 2023,2026 Florian La Roche <Florian.LaRoche@gmail.com>
 #
-# Tested on Debian-11 and Debian-12 (Should run fine on Ubuntu.):
-# sudo apt-get install python3-rich python3-pandas
+# Tested on Debian. (Should run fine on Ubuntu.)
+#
+# Installation/preparation:
+# sudo apt-get install python3-venv python3-rich python3-pandas
 # python3 -m venv venv
 # . venv/bin/activate
 # pip3 install ib_async
+# pip3 install rich
+#
+# Configuration of IB TWS Java memory usage:
+# ~/Jts/tws.vmoptions:
+# -Xmx4096m
 #
 
 import sys
 import locale
 import logging
+#import asyncio
 import ib_async
 
 from rich.console import Console
@@ -190,6 +198,9 @@ def main(argv):
     show_account(ib, console, verbose)
 
     # ib.reqMarketDataType(self.config["account"]["market_data_type"])
+    # 3 == delayed
+    # 4 == delayed frozen
+    # 1 == realtime with subscriptions
 
     ib.disconnect()
 
