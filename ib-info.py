@@ -15,7 +15,7 @@
 # ~/Jts/tws.vmoptions:
 # -Xmx4096m
 #
-# pylint: disable=W0511,C0103,C0114,C0116
+# pylint: disable=W0511,R0912,C0103,C0114,C0116
 #
 
 import sys
@@ -148,7 +148,8 @@ def show_accounts(ib, console, accounts=None, accountSummary=None):
     table.add_column('NetLiq')
     table.add_column('Margin')
     table.add_column('Cash')
-    for (account, nav, margin, cash, cash_percent) in getAccountDetails(ib, myaccounts, accountSummary):
+    for (account, nav, margin, cash, cash_percent) in getAccountDetails(ib,
+        myaccounts, accountSummary):
         # XXX add info on time of last update
         if account == 'All':
             table.add_section()
@@ -230,7 +231,8 @@ def main(argv):
     try:
         ib.connect(host, port, clientId=client_id) # account=, timeout=
     except ConnectionRefusedError:
-        print('ERROR API connection failed: ConnectionRefusedError: Make sure API port on TWS/IBG is open.')
+        print('ERROR API connection failed: ConnectionRefusedError: '
+              'Make sure API port on TWS/IBG is open.')
         sys.exit(1)
 
     console = Console()
