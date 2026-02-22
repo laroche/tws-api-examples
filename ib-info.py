@@ -41,8 +41,6 @@ def print_data(value):
 def show_account2(ib):
     #accountValues = ib.accountValues()
     #printAccountValues(accountValues):
-    #print([v for v in ib.accountValues()
-    #       if v.tag == 'NetLiquidationByCurrency' and v.currency == 'BASE'])
     portfolio = ib.portfolio() # account=
     if portfolio:
         print('Portfolio:')
@@ -132,8 +130,7 @@ def show_accounts(ib, console, verbose):
         #table.add_column("Stocks: 400 T€ (20%)")
     console.print(Panel(table))
 
-    if verbose >= 3:
-        show_account2(ib)
+    show_account2(ib)
 
 def usage():
     print('ib-info.py ' +
