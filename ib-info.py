@@ -34,8 +34,8 @@ from rich.table import Table
 BASE = '€'
 
 def print_data(value):
-    if value >= 980000:
-        return locale.format_string("%d", round(value / 1000), grouping=True) + 'T'
+    #if value >= 980000:
+    #    return locale.format_string("%d", round(value / 1000), grouping=True) + 'T'
     return locale.format_string("%d", round(value), grouping=True)
 
 def show_account2(ib):
@@ -93,7 +93,8 @@ def getAccountDetails(accounts, accountSummary=None):
                 cash = float(p.value)
                 cash_str = print_data(cash) + get_currency_symbol(p.currency)
             elif p.tag == 'Cushion':
-                margin = str(100 - round(float(p.value) * 100)) + '%'
+                margin = (1.0 - float(p.value)) * 100.0
+                margin = f'{margin:.1f}%'
             elif p.tag == 'NetLiquidation':
                 nav = float(p.value)
                 nav_str = print_data(nav) + get_currency_symbol(p.currency)
