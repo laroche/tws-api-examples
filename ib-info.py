@@ -40,7 +40,15 @@ def print_data(value):
     #    return locale.format_string('%d', round(value / 1000), grouping=True) + 'T'
     return locale.format_string('%d', round(value), grouping=True)
 
-def show_account2(ib):
+def getPortfolioItem(pi):
+    return (pi.position, 'name', pi.marketPrice, pi.unrealizedPNL, pi.marketValue, pi.averageCost)
+
+def printPortfolioItem(account, pi):
+    if pi.account == account:
+        return getPortfolioItem(pi)
+    return None
+
+def show_account2(accounts, ib):
     #accountValues = ib.accountValues()
     #printAccountValues(accountValues):
     portfolio = ib.portfolio() # account=
@@ -49,6 +57,12 @@ def show_account2(ib):
         print('Portfolio:')
         for p in portfolio:
             print(p)
+        print()
+        print('Portfolio:')
+        for a in accounts:
+            for pi in portfolio:
+                p = printPortfolioItem(a, pi)
+                print(p)
     positions = ib.positions()
     if positions:
         print()
@@ -122,9 +136,8 @@ def printAccountValues(accountValues):
 
 def show_accounts(ib, console, accounts=None, accountSummary=None):
     if accounts is None:
-        myaccounts = ib.managedAccounts()
-    else:
-        myaccounts = accounts.copy()
+        accounts = ib.managedAccounts()
+    myaccounts = accounts.copy()
     if accountSummary is None:
         accountSummary = ib.accountSummary()
     #printAccountSummary(accountSummary)
@@ -145,7 +158,7 @@ def show_accounts(ib, console, accounts=None, accountSummary=None):
         #table.add_column('Stocks: 400 T€ (20%)')
     console.print(Panel(table))
 
-    show_account2(ib)
+    show_account2(accounts, ib)
 
 def usage():
     print('ib-info.py ' +
