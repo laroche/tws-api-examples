@@ -15,6 +15,8 @@
 # ~/Jts/tws.vmoptions:
 # -Xmx4096m
 #
+# pylint: disable=W0511,C0103,C0114,C0116
+#
 
 import sys
 import locale
@@ -27,44 +29,48 @@ from rich.panel import Panel
 from rich.table import Table
 
 # Turn off some of the more annoying logging output from ib_async
-#logging.getLogger("ib_async.ib").setLevel(logging.ERROR)
-#logging.getLogger("ib_async.wrapper").setLevel(logging.CRITICAL)
+#logging.getLogger('ib_async.ib').setLevel(logging.ERROR)
+#logging.getLogger('ib_async.wrapper').setLevel(logging.CRITICAL)
 
 # XXX How to detect base currency?
-BASE = '€'
+#BASE = '€'
 
 def print_data(value):
     #if value >= 980000:
-    #    return locale.format_string("%d", round(value / 1000), grouping=True) + 'T'
-    return locale.format_string("%d", round(value), grouping=True)
+    #    return locale.format_string('%d', round(value / 1000), grouping=True) + 'T'
+    return locale.format_string('%d', round(value), grouping=True)
 
 def show_account2(ib):
     #accountValues = ib.accountValues()
     #printAccountValues(accountValues):
     portfolio = ib.portfolio() # account=
     if portfolio:
+        print()
         print('Portfolio:')
         for p in portfolio:
             print(p)
     positions = ib.positions()
     if positions:
+        print()
         print('Positions:')
         for p in positions:
             print(p)
     trades = ib.trades()
     if trades:
+        print()
         print('Trades:')
         for t in trades:
             print(t)
     orders = ib.orders()
     if orders:
+        print()
         print('Orders:')
         for o in orders:
             print(o)
     #orders = ib.openTrades()
-    #print(f"\nOpen Orders: {len(orders)}")
+    #print(f'\nOpen Orders: {len(orders)}')
     #for trade in orders:
-    #    print(f"{trade.contract.symbol}: {trade.order.action} {trade.order.totalQuantity}")
+    #    print(f'{trade.contract.symbol}: {trade.order.action} {trade.order.totalQuantity}')
 
 def get_currency_symbol(curr):
     if curr == 'EUR':
@@ -73,7 +79,7 @@ def get_currency_symbol(curr):
         return '$'
     return curr
 
-def getAccountDetails(accounts, accountSummary=None):
+def getAccountDetails(ib, accounts, accountSummary=None):
     ret = []
     if accountSummary is None:
         accountSummary = ib.accountSummary()
@@ -102,32 +108,41 @@ def getAccountDetails(accounts, accountSummary=None):
     return ret
 
 def printAccountSummary(accountSummary):
+    print()
     print('Account Summary:')
-    for a in accountSummary:
-        print(a)
+    if accountSummary is not None:
+        for a in accountSummary:
+            print(a)
 
 def printAccountValues(accountValues):
+    print()
     print('Account Values:')
     for a in accountValues:
         print(a)
 
-def show_accounts(ib, console, verbose):
-    accounts = ib.managedAccounts()
-    accountSummary = ib.accountSummary()
+def show_accounts(ib, console, accounts=None, accountSummary=None):
+    if accounts is None:
+        myaccounts = ib.managedAccounts()
+    else:
+        myaccounts = accounts.copy()
+    if accountSummary is None:
+        accountSummary = ib.accountSummary()
     #printAccountSummary(accountSummary)
-    for (account, nav, margin, cash, cash_percent) in getAccountDetails(accounts, accountSummary):
-        if len(accounts) > 1:
-            table = Table(title="Accounts: %s" % (",".join(accounts)))
-        else:
-            table = Table(title="Account: %s" % (",".join(accounts)))
+    table = Table(title='Account Summary')
+    if len(myaccounts) > 1:
+        myaccounts.append('All')
+    table.add_column('Account')
+    table.add_column('NetLiq')
+    table.add_column('Margin')
+    table.add_column('Cash')
+    for (account, nav, margin, cash, cash_percent) in getAccountDetails(ib, myaccounts, accountSummary):
         # XXX add info on time of last update
-        table.add_column(f"Account: {account}")
-        table.add_column(f"NetLiq: {nav}")
-        table.add_column(f"Margin: {margin}")
-        table.add_column(f"Cash: {cash} ({cash_percent})")
-        #table.add_column("US-T: 120 T€ (7%)")
-        #table.add_column("Sold Options: -100(12000) (0,05%)")
-        #table.add_column("Stocks: 400 T€ (20%)")
+        if account == 'All':
+            table.add_section()
+        table.add_row(f'{account}', f'{nav}', f'{margin}', f'{cash} ({cash_percent})')
+        #table.add_column('US-T: 120 T€ (7%)')
+        #table.add_column('Sold Options: -100(12000) (0,05%)')
+        #table.add_column('Stocks: 400 T€ (20%)')
     console.print(Panel(table))
 
     show_account2(ib)
@@ -144,7 +159,7 @@ def main(argv):
     #locale.setlocale(locale.LC_ALL, 'de_DE')
     #print(locale.getlocale())
     #for key, value in locale.localeconv().items():
-    #    print("%s: %s" % (key, value))
+    #    print('%s: %s' % (key, value))
     #logger = logging.getLogger(__name__)
 
     verbose = 1
@@ -196,31 +211,20 @@ def main(argv):
         ib_async.util.logToConsole(logging.INFO)
     elif verbose >= 3:
         ib_async.util.logToConsole(logging.DEBUG)
-    #ib_async.util.logToFile("ib.log", logging.WARNING)
+    #ib_async.util.logToFile('ib.log', logging.WARNING)
 
     ib = ib_async.IB()
     try:
         ib.connect(host, port, clientId=client_id) # account=, timeout=
     except ConnectionRefusedError:
+        print('ERROR API connection failed: ConnectionRefusedError: Make sure API port on TWS/IBG is open.')
         sys.exit(1)
 
     console = Console()
 
-    if False:
-        table = Table(title="Account summary")
-        table.add_column("Item")
-        table.add_column("Value", justify="right")
-        table.add_row("Net liquidation", "0")
-        table.add_row("Maintenance margin", "0")
-        table.add_row("Total cash", "0")
-        table.add_section()
-        table.add_row("Total cash", "0")
-        console.print(Panel(table))
+    show_accounts(ib, console)
 
-
-    show_accounts(ib, console, verbose)
-
-    # ib.reqMarketDataType(self.config["account"]["market_data_type"])
+    # ib.reqMarketDataType(self.config['account']['market_data_type'])
     # 3 == delayed
     # 4 == delayed frozen
     # 1 == realtime with subscriptions
@@ -231,23 +235,23 @@ def main(argv):
     #calc = ib.calculateOptionPrice(option, volatility=0.14, underPrice=525)
     #print(calc)
 
-    #spx = Index("SPX", "CBOE")
+    #spx = Index('SPX', 'CBOE')
     #ib.qualifyContracts(spx)
     #ib.reqMarketDataType(4)
     #[ticker] = ib.reqTickers(spx)
     #spxValue = ticker.marketPrice()
-    #chains = ib.reqSecDefOptParams(spx.symbol, "", spx.secType, spx.conId)
+    #chains = ib.reqSecDefOptParams(spx.symbol, '', spx.secType, spx.conId)
     #util.df(chains)
-    #chain = next(c for c in chains if c.tradingClass == "SPX" and c.exchange == "SMART")
+    #chain = next(c for c in chains if c.tradingClass == 'SPX' and c.exchange == 'SMART')
     #strikes = [
     #    strike
     #    for strike in chain.strikes
     #    if strike % 5 == 0 and spxValue - 20 < strike < spxValue + 20
     #]
     #expirations = sorted(exp for exp in chain.expirations)[:3]
-    #rights = ["P", "C"]
+    #rights = ['P', 'C']
     #contracts = [
-    #    Option("SPX", expiration, strike, right, "SMART", tradingClass="SPX")
+    #    Option('SPX', expiration, strike, right, 'SMART', tradingClass='SPX')
     #    for right in rights
     #    for expiration in expirations
     #    for strike in strikes
