@@ -39,6 +39,8 @@ def print_data(value):
     return locale.format_string("%d", round(value), grouping=True)
 
 def show_account2(ib):
+    #accountValues = ib.accountValues()
+    #printAccountValues(accountValues):
     #print([v for v in ib.accountValues()
     #       if v.tag == 'NetLiquidationByCurrency' and v.currency == 'BASE'])
     portfolio = ib.portfolio() # account=
@@ -61,51 +63,72 @@ def show_account2(ib):
         print('Orders:')
         for o in orders:
             print(o)
+    #orders = ib.openTrades()
+    #print(f"\nOpen Orders: {len(orders)}")
+    #for trade in orders:
+    #    print(f"{trade.contract.symbol}: {trade.order.action} {trade.order.totalQuantity}")
 
-def show_account(ib, console, verbose):
-    accounts = ib.managedAccounts()
-    accountValues = ib.accountValues()
-    if verbose >= 3 and accountValues:
-        print('Account Values:')
-        for p in accountValues:
-            print(p)
-    accountSummary = ib.accountSummary()
-    if verbose >= 3 and accountSummary:
-        print('Account Summary:')
+def get_currency_symbol(curr):
+    if curr == 'EUR':
+        return '€'
+    if curr == 'USD':
+        return '$'
+    return curr
+
+def getAccountDetails(accounts, accountSummary=None):
+    ret = []
+    if accountSummary is None:
+        accountSummary = ib.accountSummary()
+    for a in accounts:
+        nav = .0
+        nav_str = ''
+        cash = .0
+        cash_str = ''
+        cash_percent = ''
+        margin = ''
         for p in accountSummary:
-            print(p)
-    nav = .0
-    nav_str = ''
-    cash = .0
-    cash_str = ''
-    cash_percent = ''
-    margin = ''
-    for p in accountSummary:
-        if p.account == 'All' and p.tag == 'TotalCashBalance' and p.currency == 'BASE':
-            cash = float(p.value)
-            cash_str = print_data(cash) + BASE
-        if p.tag == 'Cushion':
-            margin = str(100 - round(float(p.value) * 100)) + '%'
-        if p.tag == 'NetLiquidation':
-            nav = float(p.value)
-            nav_str = print_data(nav) + BASE
-    if nav > .0:
-        cash_percent = str(round(cash * 100 / nav)) + '%'
-    if len(accounts) > 1:
-        table = Table(title="Accounts: %s" % (",".join(accounts)))
-    else:
-        table = Table(title="Account: %s" % (",".join(accounts)))
-    # XXX add info on time of last update
-    if len(accounts) > 1:
-        table.add_column("Accounts: %s" % (",".join(accounts)))
-    else:
-        table.add_column("Account: %s" % (",".join(accounts)))
-    table.add_column(f"NetLiq: {nav_str}")
-    table.add_column(f"Margin: {margin}")
-    table.add_column(f"Cash: {cash_str} ({cash_percent})")
-    #table.add_column("US-T: 120 T€ (7%)")
-    #table.add_column("Sold Options: -100(12000) (0,05%)")
-    #table.add_column("Stocks: 400 T€ (20%)")
+            if p.account != a:
+                continue
+            if p.tag == 'TotalCashValue':
+                cash = float(p.value)
+                cash_str = print_data(cash) + get_currency_symbol(p.currency)
+            elif p.tag == 'Cushion':
+                margin = str(100 - round(float(p.value) * 100)) + '%'
+            elif p.tag == 'NetLiquidation':
+                nav = float(p.value)
+                nav_str = print_data(nav) + get_currency_symbol(p.currency)
+        if nav > .0:
+            cash_percent = str(round(cash * 100 / nav)) + '%'
+        ret.append((a, nav_str, margin, cash_str, cash_percent))
+    return ret
+
+def printAccountSummary(accountSummary):
+    print('Account Summary:')
+    for a in accountSummary:
+        print(a)
+
+def printAccountValues(accountValues):
+    print('Account Values:')
+    for a in accountValues:
+        print(a)
+
+def show_accounts(ib, console, verbose):
+    accounts = ib.managedAccounts()
+    accountSummary = ib.accountSummary()
+    #printAccountSummary(accountSummary)
+    for (account, nav, margin, cash, cash_percent) in getAccountDetails(accounts, accountSummary):
+        if len(accounts) > 1:
+            table = Table(title="Accounts: %s" % (",".join(accounts)))
+        else:
+            table = Table(title="Account: %s" % (",".join(accounts)))
+        # XXX add info on time of last update
+        table.add_column(f"Account: {account}")
+        table.add_column(f"NetLiq: {nav}")
+        table.add_column(f"Margin: {margin}")
+        table.add_column(f"Cash: {cash} ({cash_percent})")
+        #table.add_column("US-T: 120 T€ (7%)")
+        #table.add_column("Sold Options: -100(12000) (0,05%)")
+        #table.add_column("Stocks: 400 T€ (20%)")
     console.print(Panel(table))
 
     if verbose >= 3:
@@ -131,10 +154,12 @@ def main(argv):
     # Connect params to your Interactive Brokers (IB) TWS or IB Gateway:
     host = '127.0.0.1'
     #port = 7497 # TWS paper account (demo/test)
-    port = 7496 # TWS active/real/live account
-    #port = 4002 # IB Gateway paper account (demo/test)
-    #port = 4001 # IB Gateway active/real/live account
+    port = 7496  # TWS active/real/live account
+    #port = 4002 # IB Gateway (IBG) paper account (demo/test)
+    #port = 4001 # IB Gateway (IBG) active/real/live account
     client_id = 0
+    # client_id 0 is getting all transactions, including also TWS.
+    # client_id 1 (configurable) is getting transactions from other client_ids, but not TWS.
 
     try:
         opts, args = getopt.getopt(argv, 'dhqv', ['list-index', 'help',
@@ -195,12 +220,43 @@ def main(argv):
         console.print(Panel(table))
 
 
-    show_account(ib, console, verbose)
+    show_accounts(ib, console, verbose)
 
     # ib.reqMarketDataType(self.config["account"]["market_data_type"])
     # 3 == delayed
     # 4 == delayed frozen
     # 1 == realtime with subscriptions
+
+    #option = Option('EOE', '20171215', 490, 'P', 'FTA', multiplier=100)
+    #calc = ib.calculateImpliedVolatility(option, optionPrice=6.1, underPrice=525)
+    #print(calc)
+    #calc = ib.calculateOptionPrice(option, volatility=0.14, underPrice=525)
+    #print(calc)
+
+    #spx = Index("SPX", "CBOE")
+    #ib.qualifyContracts(spx)
+    #ib.reqMarketDataType(4)
+    #[ticker] = ib.reqTickers(spx)
+    #spxValue = ticker.marketPrice()
+    #chains = ib.reqSecDefOptParams(spx.symbol, "", spx.secType, spx.conId)
+    #util.df(chains)
+    #chain = next(c for c in chains if c.tradingClass == "SPX" and c.exchange == "SMART")
+    #strikes = [
+    #    strike
+    #    for strike in chain.strikes
+    #    if strike % 5 == 0 and spxValue - 20 < strike < spxValue + 20
+    #]
+    #expirations = sorted(exp for exp in chain.expirations)[:3]
+    #rights = ["P", "C"]
+    #contracts = [
+    #    Option("SPX", expiration, strike, right, "SMART", tradingClass="SPX")
+    #    for right in rights
+    #    for expiration in expirations
+    #    for strike in strikes
+    #]
+    #tickers = ib.reqTickers(*contracts)
+    #contracts = ib.qualifyContracts(*contracts)
+    #len(contracts)
 
     ib.disconnect()
 
