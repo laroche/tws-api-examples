@@ -41,28 +41,42 @@ def print_data(value):
     return locale.format_string('%d', round(value), grouping=True)
 
 def getPortfolioItem(pi):
-    return (pi.position, 'name', pi.marketPrice, pi.unrealizedPNL, pi.marketValue, pi.averageCost)
+    return (pi.position, pi.contract.localSymbol, pi.unrealizedPNL, pi.marketValue,
+        pi.marketPrice, pi.averageCost)
 
 def printPortfolioItem(account, pi):
-    if pi.account == account:
-        return getPortfolioItem(pi)
-    return None
+    if pi.account != account:
+        return None
+    return getPortfolioItem(pi)
 
-def show_account2(accounts, ib):
+def show_account2(accounts, ib, console):
     #accountValues = ib.accountValues()
     #printAccountValues(accountValues):
     portfolio = ib.portfolio() # account=
     if portfolio:
+        for account in accounts:
+            pf = []
+            for pi in portfolio:
+                p = printPortfolioItem(account, pi)
+                #print(p)
+                pf.append(p)
+            # XXX sort pf
+            table = Table(title=f'Portfolio von {account}')
+            table.add_column('Anzahl', justify='right')
+            table.add_column('Name')
+            table.add_column('GuV', justify='right')
+            table.add_column('Marktwert', justify='right')
+            table.add_column('Preis', justify='right')
+            table.add_column('Durchschnittskurs', justify='right')
+            #for pi in pf:
+            #    table.add_row(pi)
+            for (a, b, c, d, e, f) in pf:
+                table.add_row(str(a), str(b), str(c), str(d), str(e), str(f))
+            console.print(Panel(table))
         print()
         print('Portfolio:')
         for p in portfolio:
             print(p)
-        print()
-        print('Portfolio:')
-        for a in accounts:
-            for pi in portfolio:
-                p = printPortfolioItem(a, pi)
-                print(p)
     positions = ib.positions()
     if positions:
         print()
@@ -97,7 +111,7 @@ def getAccountDetails(ib, accounts, accountSummary=None):
     ret = []
     if accountSummary is None:
         accountSummary = ib.accountSummary()
-    for a in accounts:
+    for account in accounts:
         nav = .0
         nav_str = ''
         cash = .0
@@ -105,7 +119,7 @@ def getAccountDetails(ib, accounts, accountSummary=None):
         cash_percent = ''
         margin = ''
         for p in accountSummary:
-            if p.account != a:
+            if p.account != account:
                 continue
             if p.tag == 'TotalCashValue':
                 cash = float(p.value)
@@ -118,7 +132,7 @@ def getAccountDetails(ib, accounts, accountSummary=None):
                 nav_str = print_data(nav) + get_currency_symbol(p.currency)
         if nav > .0:
             cash_percent = str(round(cash * 100 / nav)) + '%'
-        ret.append((a, nav_str, margin, cash_str, cash_percent))
+        ret.append((account, nav_str, margin, cash_str, cash_percent))
     return ret
 
 def printAccountSummary(accountSummary):
@@ -145,9 +159,9 @@ def show_accounts(ib, console, accounts=None, accountSummary=None):
     if len(myaccounts) > 1:
         myaccounts.append('All')
     table.add_column('Account')
-    table.add_column('NetLiq')
-    table.add_column('Margin')
-    table.add_column('Cash')
+    table.add_column('NetLiq', justify='right')
+    table.add_column('Margin', justify='right')
+    table.add_column('Cash', justify='right')
     for (account, nav, margin, cash, cash_percent) in getAccountDetails(ib,
         myaccounts, accountSummary):
         # XXX add info on time of last update
@@ -159,11 +173,11 @@ def show_accounts(ib, console, accounts=None, accountSummary=None):
         #table.add_column('Stocks: 400 T€ (20%)')
     console.print(Panel(table))
 
-    show_account2(accounts, ib)
+    show_account2(accounts, ib, console)
 
 def usage():
     print('ib-info.py ' +
-        '[--host=127.0.0.1][--port=7496][--client-id=0]' +
+        '[--host=127.0.0.1][--port=7496][--client-id=0][--readonly][--acount=U12345]' +
         '[--help][--verbose][--debug][--quiet]')
 
 def main(argv):
@@ -185,13 +199,18 @@ def main(argv):
     #port = 4002 # IB Gateway (IBG) paper account (demo/test)
     #port = 4001 # IB Gateway (IBG) active/real/live account
     client_id = 0
+    # client_id must be unique per connection
     # client_id 0 is getting all transactions, including also TWS.
     # client_id 1 (configurable) is getting transactions from other client_ids, but not TWS.
+    # Only read access?
+    readonly = False
+    # Limit to a specific account:
+    account = ''
 
     try:
-        opts, args = getopt.getopt(argv, 'dhqv', ['list-index', 'help',
-            'host=', 'port=', 'client-id='
-            'data-dir=', 'quiet', 'verbose', 'debug'])
+        opts, args = getopt.getopt(argv, 'adhipqrv', ['help',
+            'host=', 'port=', 'client-id=', 'readonly', 'account=',
+            'quiet', 'verbose', 'debug'])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -201,10 +220,14 @@ def main(argv):
             sys.exit()
         elif opt == '--host':
             host = arg
-        elif opt == '--port':
+        elif opt in ('-p', '--port'):
             port = int(arg)
-        elif opt == '--client-id':
+        elif opt in ('-i', '--client-id'):
             client_id = int(arg)
+        elif opt  in ('-r', '--readonly'):
+            readonly = True
+        elif opt in ('-a', '--account'):
+            account = arg
         elif opt in ('-v', '--verbose'):
             verbose += 1
         elif opt in ('-d', '--debug'):
@@ -229,7 +252,7 @@ def main(argv):
 
     ib = ib_async.IB()
     try:
-        ib.connect(host, port, clientId=client_id) # account=, timeout=
+        ib.connect(host, port, clientId=client_id, readonly=readonly, account=account)
     except ConnectionRefusedError:
         print('ERROR API connection failed: ConnectionRefusedError: '
               'Make sure API port on TWS/IBG is open.')
