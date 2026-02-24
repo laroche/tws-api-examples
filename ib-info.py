@@ -105,6 +105,20 @@ def showAccountSummary(ib, console, accounts, accountSummary=None):
         #table.add_column('Stocks: 400 T€ (20%)')
     console.print(Panel(table))
 
+def getStrike(contract):
+    strike = f'{contract.strike}'
+    if strike[-2:] == '.0':
+        strike = strike[:-2]
+    return strike
+
+def getName(pi):
+    ct = pi.contract
+    name = ct.localSymbol
+    if (isinstance(ct, ib_async.contract.FuturesOption) or
+        isinstance(ct, ib_async.contract.Option)):
+        name = f'{ct.symbol} {ct.right}{getStrike(ct)} {ct.lastTradeDateOrContractMonth}'
+    return name
+
 def showPortfolio(ib, console, accounts):
     portfolio = ib.portfolio()
     if not portfolio:
@@ -115,8 +129,8 @@ def showPortfolio(ib, console, accounts):
         for pi in portfolio:
             if pi.account != account:
                 continue
-            pf.append((pi.position, pi.contract.localSymbol, pi.unrealizedPNL,
-                pi.marketValue, pi.marketPrice, pi.averageCost, pi.contract.currency))
+            pf.append((pi.position, getName(pi), pi.unrealizedPNL, pi.marketValue,
+                pi.marketPrice, pi.averageCost, pi.contract.currency))
         # XXX sort pf
         table = Table(title=f'Portfolio von {account}')
         table.add_column('Anzahl', justify='right')
@@ -137,10 +151,10 @@ def showPortfolio(ib, console, accounts):
             table.add_row(f'{a:.0f}', str(b), f'{c:.0f} {curr}', f'{guv_prozent:.0f}%',
                 f'{d:.0f} {curr}', f'{kostenbasis:.0f} {curr}', str(e), str(f))
         console.print(Panel(table))
-    print()
-    print('Portfolio:')
-    for p in portfolio:
-        print(p)
+    #print()
+    #print('Portfolio:')
+    #for p in portfolio:
+    #    print(p)
 
 def printAccountValues(accountValues):
     print()
