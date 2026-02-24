@@ -114,8 +114,7 @@ def getStrike(contract):
 def getName(pi):
     ct = pi.contract
     name = ct.localSymbol
-    if (isinstance(ct, ib_async.contract.FuturesOption) or
-        isinstance(ct, ib_async.contract.Option)):
+    if isinstance(ct, (ib_async.contract.FuturesOption, ib_async.contract.Option)):
         name = f'{ct.symbol} {ct.right}{getStrike(ct)} {ct.lastTradeDateOrContractMonth}'
     return name
 
