@@ -35,77 +35,24 @@ from rich.table import Table
 # XXX How to detect base currency?
 #BASE = '€'
 
-def print_data(value):
-    #if value >= 980000:
-    #    return locale.format_string('%d', round(value / 1000), grouping=True) + 'T'
-    return locale.format_string('%d', round(value), grouping=True)
-
-def getPortfolioItem(pi):
-    return (pi.position, pi.contract.localSymbol, pi.unrealizedPNL, pi.marketValue,
-        pi.marketPrice, pi.averageCost)
-
-def printPortfolioItem(account, pi):
-    if pi.account != account:
-        return None
-    return getPortfolioItem(pi)
-
-def show_account2(accounts, ib, console):
-    #accountValues = ib.accountValues()
-    #printAccountValues(accountValues):
-    portfolio = ib.portfolio() # account=
-    if portfolio:
-        for account in accounts:
-            pf = []
-            for pi in portfolio:
-                p = printPortfolioItem(account, pi)
-                #print(p)
-                pf.append(p)
-            # XXX sort pf
-            table = Table(title=f'Portfolio von {account}')
-            table.add_column('Anzahl', justify='right')
-            table.add_column('Name')
-            table.add_column('GuV', justify='right')
-            table.add_column('Marktwert', justify='right')
-            table.add_column('Preis', justify='right')
-            table.add_column('Durchschnittskurs', justify='right')
-            #for pi in pf:
-            #    table.add_row(pi)
-            for (a, b, c, d, e, f) in pf:
-                table.add_row(str(a), str(b), str(c), str(d), str(e), str(f))
-            console.print(Panel(table))
-        print()
-        print('Portfolio:')
-        for p in portfolio:
-            print(p)
-    positions = ib.positions()
-    if positions:
-        print()
-        print('Positions:')
-        for p in positions:
-            print(p)
-    trades = ib.trades()
-    if trades:
-        print()
-        print('Trades:')
-        for t in trades:
-            print(t)
-    orders = ib.orders()
-    if orders:
-        print()
-        print('Orders:')
-        for o in orders:
-            print(o)
-    #orders = ib.openTrades()
-    #print(f'\nOpen Orders: {len(orders)}')
-    #for trade in orders:
-    #    print(f'{trade.contract.symbol}: {trade.order.action} {trade.order.totalQuantity}')
-
 def get_currency_symbol(curr):
     if curr == 'EUR':
         return '€'
     if curr == 'USD':
         return '$'
     return curr
+
+def print_data(value):
+    #if value >= 980000:
+    #    return locale.format_string('%d', round(value / 1000), grouping=True) + 'T'
+    return locale.format_string('%d', round(value), grouping=True)
+
+def printAccountSummary(accountSummary):
+    print()
+    print('Account Summary:')
+    if accountSummary is not None:
+        for a in accountSummary:
+            print(a)
 
 def getAccountDetails(ib, accounts, accountSummary=None):
     ret = []
@@ -135,22 +82,7 @@ def getAccountDetails(ib, accounts, accountSummary=None):
         ret.append((account, nav_str, margin, cash_str, cash_percent))
     return ret
 
-def printAccountSummary(accountSummary):
-    print()
-    print('Account Summary:')
-    if accountSummary is not None:
-        for a in accountSummary:
-            print(a)
-
-def printAccountValues(accountValues):
-    print()
-    print('Account Values:')
-    for a in accountValues:
-        print(a)
-
-def show_accounts(ib, console, accounts=None, accountSummary=None):
-    if accounts is None:
-        accounts = ib.managedAccounts()
+def showAccountSummary(ib, console, accounts, accountSummary=None):
     myaccounts = accounts.copy()
     if accountSummary is None:
         accountSummary = ib.accountSummary()
@@ -173,7 +105,85 @@ def show_accounts(ib, console, accounts=None, accountSummary=None):
         #table.add_column('Stocks: 400 T€ (20%)')
     console.print(Panel(table))
 
-    show_account2(accounts, ib, console)
+def showPortfolio(ib, console, accounts):
+    portfolio = ib.portfolio()
+    if not portfolio:
+        print('ERROR: Could not read portfolio.')
+        return
+    for account in accounts:
+        pf = []
+        for pi in portfolio:
+            if pi.account != account:
+                continue
+            pf.append((pi.position, pi.contract.localSymbol, pi.unrealizedPNL,
+                pi.marketValue, pi.marketPrice, pi.averageCost, pi.contract.currency))
+        # XXX sort pf
+        table = Table(title=f'Portfolio von {account}')
+        table.add_column('Anzahl', justify='right')
+        table.add_column('Name')
+        table.add_column('GuV', justify='right')
+        table.add_column('GuV%', justify='right')
+        table.add_column('Marktwert', justify='right')
+        table.add_column('Kostenbasis', justify='right')
+        table.add_column('aktueller Kurs', justify='right')
+        table.add_column('Durchschnittskurs', justify='right')
+        #table.add_column('Kurs vom Basiswert', justify='right')
+        for (a, b, c, d, e, f, curr) in pf:
+            curr = get_currency_symbol(curr)
+            kostenbasis = a * f
+            guv_prozent = .0
+            if kostenbasis != .0:
+                guv_prozent = round((c / abs(kostenbasis)) * 100.0)
+            table.add_row(f'{a:.0f}', str(b), f'{c:.0f} {curr}', f'{guv_prozent:.0f}%',
+                f'{d:.0f} {curr}', f'{kostenbasis:.0f} {curr}', str(e), str(f))
+        console.print(Panel(table))
+    print()
+    print('Portfolio:')
+    for p in portfolio:
+        print(p)
+
+def printAccountValues(accountValues):
+    print()
+    print('Account Values:')
+    for a in accountValues:
+        print(a)
+
+def showAccounts(ib, console, accounts=None, accountSummary=None):
+    if accounts is None:
+        accounts = ib.managedAccounts()
+
+    showAccountSummary(ib, console, accounts, accountSummary)
+
+    #accountValues = ib.accountValues()
+    #printAccountValues(accountValues)
+
+    showPortfolio(ib, console, accounts)
+
+    # Less information compared to showPortfolio():
+    #positions = ib.positions()
+    #if positions:
+    #    print()
+    #    print('Positions:')
+    #    for p in positions:
+    #        print(p)
+
+    trades = ib.trades()
+    if trades:
+        print()
+        print('Trades:')
+        for t in trades:
+            print(t)
+
+    orders = ib.orders()
+    if orders:
+        print()
+        print('Orders:')
+        for o in orders:
+            print(o)
+    #orders = ib.openTrades()
+    #print(f'\nOpen Orders: {len(orders)}')
+    #for trade in orders:
+    #    print(f'{trade.contract.symbol}: {trade.order.action} {trade.order.totalQuantity}')
 
 def usage():
     print('ib-info.py ' +
@@ -260,7 +270,7 @@ def main(argv):
 
     console = Console()
 
-    show_accounts(ib, console)
+    showAccounts(ib, console)
 
     # ib.reqMarketDataType(self.config['account']['market_data_type'])
     # 3 == delayed
