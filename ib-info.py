@@ -155,7 +155,7 @@ def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
         elif options:
             table = Table(title=f'Options-Portfolio von {account}')
         elif currency_options:
-            table = Table(title=f'Währungs-Optionen-Portfolio von {account}')
+            table = Table(title=f'Währungs-Portfolio von {account}')
         else:
             table = Table(title=f'Portfolio von {account}')
         table.add_column('Anzahl', justify='right')
@@ -167,14 +167,26 @@ def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
         table.add_column('aktueller Kurs', justify='right')
         table.add_column('Durchschnittskurs', justify='right')
         #table.add_column('Kurs vom Basiswert', justify='right')
+        sum_kostenbasis = 0.0
+        sum_d = 0.0
         for (a, b, c, d, e, f, curr) in pf:
             curr = get_currency_symbol(curr)
             kostenbasis = a * f
+            sum_kostenbasis += kostenbasis
+            sum_d += d
             guv_prozent = .0
             if kostenbasis != .0:
                 guv_prozent = round((c / abs(kostenbasis)) * 100.0)
             table.add_row(f'{a:.0f}', str(b), f'{c:.0f} {curr}', f'{guv_prozent:.0f}%',
                 f'{d:.0f} {curr}', f'{kostenbasis:.0f} {curr}', str(e), str(f))
+        table.add_section()
+        c = sum_d - sum_kostenbasis
+        guv_prozent = .0
+        if sum_kostenbasis != .0:
+            guv_prozent = round((c / abs(sum_kostenbasis)) * 100.0)
+        curr = 'X'  # XXX
+        table.add_row('', '', f'{c:.0f} {curr}', f'{guv_prozent:.0f}%',
+            f'{sum_d:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '')
         console.print(Panel(table))
     #print()
     #print('Portfolio:')
