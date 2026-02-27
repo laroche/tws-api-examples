@@ -23,10 +23,13 @@ import locale
 import logging
 #import asyncio
 import ib_async
+from ib_async.contract import FuturesOption, Option
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+
+curr_symbol = ('EUR', 'M6E')
 
 # Turn off some of the more annoying logging output from ib_async
 #logging.getLogger('ib_async.ib').setLevel(logging.ERROR)
@@ -114,12 +117,14 @@ def getStrike(contract):
 def getName(pi):
     ct = pi.contract
     name = ct.localSymbol
-    if isinstance(ct, (ib_async.contract.FuturesOption, ib_async.contract.Option)):
+    if isinstance(ct, (FuturesOption, Option)):
         name = f'{ct.symbol} {ct.right}{getStrike(ct)} {ct.lastTradeDateOrContractMonth}'
     return name
 
-def showPortfolio(ib, console, accounts):
-    portfolio = ib.portfolio()
+def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
+    future_options=False, options=False, currency_options=False):
+    if portfolio is None:
+        portfolio = ib.portfolio()
     if not portfolio:
         print('ERROR: Could not read portfolio.')
         return
@@ -128,10 +133,31 @@ def showPortfolio(ib, console, accounts):
         for pi in portfolio:
             if pi.account != account:
                 continue
+            if non_options and isinstance(pi.contract, (FuturesOption, Option)):
+                continue
+            if future_options and (not isinstance(pi.contract, FuturesOption)
+                or pi.contract.symbol in curr_symbol):
+                continue
+            if options and not isinstance(pi.contract, Option):
+                continue
+            if currency_options and (not isinstance(pi.contract, FuturesOption)
+                or pi.contract.symbol not in curr_symbol):
+                continue
             pf.append((pi.position, getName(pi), pi.unrealizedPNL, pi.marketValue,
                 pi.marketPrice, pi.averageCost, pi.contract.currency))
+        if not pf:
+            continue
         # XXX sort pf
-        table = Table(title=f'Portfolio von {account}')
+        if non_options:
+            table = Table(title=f'Portfolio (ohne Optionen) von {account}')
+        elif future_options:
+            table = Table(title=f'Future-Optionen-Portfolio von {account}')
+        elif options:
+            table = Table(title=f'Options-Portfolio von {account}')
+        elif currency_options:
+            table = Table(title=f'Währungs-Optionen-Portfolio von {account}')
+        else:
+            table = Table(title=f'Portfolio von {account}')
         table.add_column('Anzahl', justify='right')
         table.add_column('Name')
         table.add_column('GuV', justify='right')
@@ -170,7 +196,12 @@ def showAccounts(ib, console, accounts=None, accountSummary=None):
     #accountValues = ib.accountValues()
     #printAccountValues(accountValues)
 
-    showPortfolio(ib, console, accounts)
+    portfolio = ib.portfolio()
+    showPortfolio(ib, console, accounts, portfolio)
+    showPortfolio(ib, console, accounts, portfolio, non_options=True)
+    showPortfolio(ib, console, accounts, portfolio, future_options=True)
+    showPortfolio(ib, console, accounts, portfolio, options=True)
+    showPortfolio(ib, console, accounts, portfolio, currency_options=True)
 
     # Less information compared to showPortfolio():
     #positions = ib.positions()
