@@ -185,7 +185,7 @@ def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
         if sum_kostenbasis != .0:
             guv_prozent = round((c / abs(sum_kostenbasis)) * 100.0)
         curr = 'X'  # XXX
-        table.add_row('', '', f'{c:.0f} {curr}', f'{guv_prozent:.0f}%',
+        table.add_row('', '', f'{c:.0f} {curr}', f'{guv_prozent:.1f}%',
             f'{sum_d:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '')
         console.print(Panel(table))
     #print()
