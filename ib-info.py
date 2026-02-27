@@ -29,7 +29,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-curr_symbol = ('EUR', 'M6E')
+currency_symbols = ('EUR', 'M6E')
 
 # Turn off some of the more annoying logging output from ib_async
 #logging.getLogger('ib_async.ib').setLevel(logging.ERROR)
@@ -136,12 +136,12 @@ def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
             if non_options and isinstance(pi.contract, (FuturesOption, Option)):
                 continue
             if future_options and (not isinstance(pi.contract, FuturesOption)
-                or pi.contract.symbol in curr_symbol):
+                or pi.contract.symbol in currency_symbols):
                 continue
             if options and not isinstance(pi.contract, Option):
                 continue
             if currency_options and (not isinstance(pi.contract, FuturesOption)
-                or pi.contract.symbol not in curr_symbol):
+                or pi.contract.symbol not in currency_symbols):
                 continue
             pf.append((pi.position, getName(pi), pi.unrealizedPNL, pi.marketValue,
                 pi.marketPrice, pi.averageCost, pi.contract.currency))
