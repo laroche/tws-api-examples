@@ -15,6 +15,18 @@
 # ~/Jts/tws.vmoptions:
 # -Xmx4096m
 #
+# TODO:
+# - For currency overview futures are not yet considered.
+# - Add to options output:
+#   - price underlying
+#   - list DTE for options
+#   - delta, gamma, theta, vega values
+#   - list all ITM options
+#   - list notional value of all stock option short puts
+#   - list all options < 21 DTE, maybe only if delta is above a certain value
+# - summary per contract type and underlying
+# - overview pages markets
+#
 # pylint: disable=W0511,R0912,C0103,C0114,C0116
 #
 
