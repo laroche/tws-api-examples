@@ -29,7 +29,11 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+# Futures and Futures-Options that are use for currency hedging
+# and should be displayed within an extra overview page:
 currency_symbols = ('EUR', 'M6E')
+
+verbose = 1
 
 # Turn off some of the more annoying logging output from ib_async
 #logging.getLogger('ib_async.ib').setLevel(logging.ERROR)
@@ -89,7 +93,8 @@ def showAccountSummary(ib, console, accounts, accountSummary=None):
     myaccounts = accounts.copy()
     if accountSummary is None:
         accountSummary = ib.accountSummary()
-    #printAccountSummary(accountSummary)
+    if verbose >= 3:
+        printAccountSummary(accountSummary)
     table = Table(title='Account Summary')
     if len(myaccounts) > 1:
         myaccounts.append('All')
@@ -120,6 +125,12 @@ def getName(pi):
     if isinstance(ct, (FuturesOption, Option)):
         name = f'{ct.symbol} {ct.right}{getStrike(ct)} {ct.lastTradeDateOrContractMonth}'
     return name
+
+def showPortfolioDebug(portfolio):
+    print()
+    print('Portfolio:')
+    for p in portfolio:
+        print(p)
 
 def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
     future_options=False, options=False, currency_options=False):
@@ -188,10 +199,8 @@ def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
         table.add_row('', '', f'{c:.0f} {curr}', f'{guv_prozent:.1f}%',
             f'{sum_d:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '')
         console.print(Panel(table))
-    #print()
-    #print('Portfolio:')
-    #for p in portfolio:
-    #    print(p)
+    if verbose >= 3:
+        showPortfolioDebug(portfolio)
 
 def printAccountValues(accountValues):
     print()
@@ -205,8 +214,9 @@ def showAccounts(ib, console, accounts=None, accountSummary=None):
 
     showAccountSummary(ib, console, accounts, accountSummary)
 
-    #accountValues = ib.accountValues()
-    #printAccountValues(accountValues)
+    if verbose >= 3:
+        accountValues = ib.accountValues()
+        printAccountValues(accountValues)
 
     portfolio = ib.portfolio()
     showPortfolio(ib, console, accounts, portfolio)
@@ -216,12 +226,13 @@ def showAccounts(ib, console, accounts=None, accountSummary=None):
     showPortfolio(ib, console, accounts, portfolio, currency_options=True)
 
     # Less information compared to showPortfolio():
-    #positions = ib.positions()
-    #if positions:
-    #    print()
-    #    print('Positions:')
-    #    for p in positions:
-    #        print(p)
+    if verbose >= 3:
+        positions = ib.positions()
+        if positions:
+            print()
+            print('Positions:')
+            for p in positions:
+                print(p)
 
     trades = ib.trades()
     if trades:
@@ -247,6 +258,7 @@ def usage():
         '[--help][--verbose][--debug][--quiet]')
 
 def main(argv):
+    global verbose
     import getopt
 
     locale.setlocale(locale.LC_ALL, '')
@@ -255,8 +267,6 @@ def main(argv):
     #for key, value in locale.localeconv().items():
     #    print('%s: %s' % (key, value))
     #logger = logging.getLogger(__name__)
-
-    verbose = 1
 
     # Connect params to your Interactive Brokers (IB) TWS or IB Gateway:
     host = '127.0.0.1'
