@@ -66,9 +66,9 @@ def getAccountDetails(ib, accounts, accountSummary=None):
     if accountSummary is None:
         accountSummary = ib.accountSummary()
     for account in accounts:
-        nav = .0
+        nav = 0.0
         nav_str = ''
-        cash = .0
+        cash = 0.0
         cash_str = ''
         cash_percent = ''
         margin = ''
@@ -84,7 +84,7 @@ def getAccountDetails(ib, accounts, accountSummary=None):
             elif p.tag == 'NetLiquidation':
                 nav = float(p.value)
                 nav_str = print_data(nav) + get_currency_symbol(p.currency)
-        if nav > .0:
+        if nav > 0.0:
             cash_percent = str(round(cash * 100 / nav)) + '%'
         ret.append((account, nav_str, margin, cash_str, cash_percent))
     return ret
@@ -180,23 +180,23 @@ def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
         #table.add_column('Kurs vom Basiswert', justify='right')
         sum_kostenbasis = 0.0
         sum_d = 0.0
-        for (a, b, c, d, e, f, curr) in pf:
+        for (pos, name, pnl, market_value, price, average_price, curr) in pf:
             curr = get_currency_symbol(curr)
-            kostenbasis = a * f
+            kostenbasis = pos * average_price
             sum_kostenbasis += kostenbasis
-            sum_d += d
-            guv_prozent = .0
-            if kostenbasis != .0:
-                guv_prozent = round((c / abs(kostenbasis)) * 100.0)
-            table.add_row(f'{a:.0f}', str(b), f'{c:.0f} {curr}', f'{guv_prozent:.0f}%',
-                f'{d:.0f} {curr}', f'{kostenbasis:.0f} {curr}', str(e), str(f))
+            sum_d += market_value
+            guv_prozent = 0.0
+            if kostenbasis != 0.0:
+                guv_prozent = round((pnl / abs(kostenbasis)) * 100.0)
+            table.add_row(f'{pos:.0f}', str(name), f'{pnl:.0f} {curr}', f'{guv_prozent:.0f}%',
+                f'{market_value:.0f} {curr}', f'{kostenbasis:.0f} {curr}', str(price), str(average_price))
         table.add_section()
-        c = sum_d - sum_kostenbasis
+        pnl = sum_d - sum_kostenbasis
         guv_prozent = .0
         if sum_kostenbasis != .0:
-            guv_prozent = round((c / abs(sum_kostenbasis)) * 100.0)
+            guv_prozent = round((pnl / abs(sum_kostenbasis)) * 100.0)
         curr = 'X'  # XXX
-        table.add_row('', '', f'{c:.0f} {curr}', f'{guv_prozent:.1f}%',
+        table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
             f'{sum_d:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '')
         console.print(Panel(table))
     if verbose >= 3:
