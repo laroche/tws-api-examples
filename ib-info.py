@@ -23,9 +23,10 @@
 # - Add to options output:
 #   - price underlying
 #   - delta, gamma, theta, vega values
-#   - list notional value of all stock option short puts
+#   - list notional value of all stock option short puts if assigned
+#     Show also needed cash as percentage of all available cash.
 #   - list all ITM options
-#   - list all options < 21 DTE, maybe only if delta is above a certain valuea
+#   - list all options < 21 DTE, maybe only if delta is above a certain value
 # - summary per contract type and underlying
 # - overview pages markets
 # - allow different sorting strategies for overview pages
@@ -149,6 +150,12 @@ def getStrike(contract):
 
 cur_year = None
 
+def getPosition(pi):
+    pos = f'{pi.position}'
+    if pos[-2:] == '.0':
+        pos = pos[:-2]
+    return pos
+
 def getName(pi):
     global cur_year
     ct = pi.contract
@@ -181,7 +188,7 @@ def showPortfolioDebug(portfolio):
     for p in portfolio:
         print(p)
 
-def showPortfolio(console, accounts, portfolio=None, non_options=False,
+def showPortfolio(console, accounts, portfolio, non_options=False,
     future_options=False, options=False, currency_options=False):
     for account in accounts:
         pf = []
@@ -239,13 +246,15 @@ def showPortfolio(console, accounts, portfolio=None, non_options=False,
             if kostenbasis != 0.0:
                 guv_prozent = round((pnl / abs(kostenbasis)) * 100.0)
             if show_options_details:
-                table.add_row(f'{pos:.0f}', str(name), f'{pnl:.0f} {curr}', f'{guv_prozent:.0f}%',
-                    f'{market_value:.0f} {curr}', f'{kostenbasis:.0f} {curr}', str(price),
-                              str(average_price), f'{getDTE(pi.contract):.0f}')
+                table.add_row(f'{getPosition(pi)}', str(name), f'{pnl:.0f} {curr}',
+                    f'{guv_prozent:.0f}%', f'{market_value:.0f} {curr}',
+                    f'{kostenbasis:.0f} {curr}',
+                    str(price), str(average_price), f'{getDTE(pi.contract):.0f}')
             else:
-                table.add_row(f'{pos:.0f}', str(name), f'{pnl:.0f} {curr}', f'{guv_prozent:.0f}%',
-                    f'{market_value:.0f} {curr}', f'{kostenbasis:.0f} {curr}', str(price),
-                    str(average_price))
+                table.add_row(f'{getPosition(pi)}', str(name), f'{pnl:.0f} {curr}',
+                    f'{guv_prozent:.0f}%', f'{market_value:.0f} {curr}',
+                    f'{kostenbasis:.0f} {curr}',
+                    str(price), str(average_price))
         table.add_section()
         pnl = sum_d - sum_kostenbasis
         guv_prozent = .0
@@ -265,6 +274,61 @@ def printAccountValues(accountValues):
     print('Account Values:')
     for a in accountValues:
         print(a)
+
+def ShowLessThan21DTE(accounts, portfolio):
+    for account in accounts:
+        pf = []
+        for pi in portfolio:
+            if pi.account != account or not isinstance(pi.contract, Option):
+                continue
+            if getDTE(pi.contract) <= 21:
+                pf.append(pi)
+        if not pf:
+            continue
+        print()
+        print(f'List all options that expire in 21 DTE or less for account {account}:')
+        for p in pf:
+            print(f'{getPosition(p)} {getName(p)} ({getDTE(p.contract)}DTE)')
+        print()
+
+def ShowITM(accounts, portfolio):
+    for account in accounts:
+        pf = []
+        for pi in portfolio:
+            ct = pi.contract
+            if pi.account != account or not isinstance(ct, Option):
+                continue
+            # XXX pi.marketPrice should be market price of the underlying
+            if ct.right == 'P' and pi.marketPrice < ct.strike:
+                pf.append(pi)
+            if ct.right == 'C' and pi.marketPrice > ct.strike:
+                pf.append(pi)
+        if not pf:
+            continue
+        print()
+        print(f'List all In The Money (ITM) options for account {account}:')
+        for p in pf:
+            print(f'{getPosition(p)} {getName(p)} with price {pi.marketPrice:.0f}')
+        print()
+
+# XXX Maybe list all individual short puts with their needed cash sum:
+def ShowNotionalValue(accounts, portfolio):
+    for account in accounts:
+        curr = 'X' # XXX currency
+        sum_sp = 0.0
+        for pi in portfolio:
+            ct = pi.contract
+            if pi.account != account or not isinstance(ct, Option):
+                continue
+            if ct.right == 'P' and pi.position < 0.0:
+                sum_sp -= ct.strike * pi.position * float(ct.multiplier)
+        if sum_sp == 0.0:
+            continue
+        # XXX Show also needed cash as percentage of all available cash:
+        #cash_percent = str(round(sum_sp * 100.0 / all_cash)) + '%'
+        print()
+        print(f'Cash needed if all short puts get assigned for account {account}: {sum_sp:.0f} {curr}')
+        print()
 
 def showAccounts(ib, console, accounts=None, accountSummary=None):
     if accounts is None:
@@ -287,6 +351,9 @@ def showAccounts(ib, console, accounts=None, accountSummary=None):
     showPortfolio(console, accounts, portfolio, non_options=True)
     showPortfolio(console, accounts, portfolio, future_options=True)
     showPortfolio(console, accounts, portfolio, options=True)
+    ShowLessThan21DTE(accounts, portfolio)
+    #ShowITM(accounts, portfolio)
+    ShowNotionalValue(accounts, portfolio)
     showPortfolio(console, accounts, portfolio, currency_options=True)
 
     # Less information compared to showPortfolio():
