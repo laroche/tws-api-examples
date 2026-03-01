@@ -27,8 +27,6 @@
 #   - list all ITM options
 #   - list notional value of all stock option short puts
 #   - list all options < 21 DTE, maybe only if delta is above a certain valuea
-#   - Allow to reduce expiration date output: remove year if current year.
-#     Or only list year with 2 digits.
 # - summary per contract type and underlying
 # - overview pages markets
 # - allow different sorting strategies for overview pages
@@ -45,6 +43,7 @@
 import sys
 import locale
 import logging
+import datetime
 #import asyncio
 import ib_async
 from ib_async.contract import FuturesOption, Option
@@ -52,6 +51,12 @@ from ib_async.contract import FuturesOption, Option
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+
+# Output configuration:
+# Limit year of expiration date to 2 digits only:
+ShowYearWithTwoDigits = False
+# Do not show current year for expiration dates:
+DoNotShowCurrentYear = False
 
 # Futures and Futures-Options that are used for currency hedging
 # and should be displayed within an extra overview page:
@@ -146,8 +151,16 @@ def getStrike(contract):
 def getName(pi):
     ct = pi.contract
     name = ct.localSymbol
+    expiration = ct.lastTradeDateOrContractMonth
+    if ShowYearWithTwoDigits:
+        expiration = expiration[2:]
+    elif DoNotShowCurrentYear:
+        today = datetime.date.today()
+        year = today.strftime("%Y") # today.year
+        if year == expiration[:4]:
+            expiration = expiration[4:]
     if isinstance(ct, (FuturesOption, Option)):
-        name = f'{ct.symbol} {ct.right}{getStrike(ct)} {ct.lastTradeDateOrContractMonth}'
+        name = f'{ct.symbol} {ct.right}{getStrike(ct)} {expiration}'
     return name
 
 def showPortfolioDebug(portfolio):
