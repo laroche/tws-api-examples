@@ -27,6 +27,9 @@
 #     Show also needed cash as percentage of all available cash.
 #   - list all ITM options
 #   - list all options < 21 DTE, maybe only if delta is above a certain value
+#   - list all long optins with DTE < 60(?) that should get rolled (hedges)
+#   - list all short options with delta > 40 that should get rolled
+#     - calculate the best delta for rolling options by looking at current prices
 # - summary per contract type and underlying
 # - overview pages markets
 # - allow different sorting strategies for overview pages
