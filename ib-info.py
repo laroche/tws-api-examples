@@ -94,10 +94,8 @@ def printAccountSummary(accountSummary):
         for a in accountSummary:
             print(a)
 
-def getAccountDetails(ib, accounts, accountSummary=None):
+def getAccountDetails(accounts, accountSummary):
     ret = []
-    if accountSummary is None:
-        accountSummary = ib.accountSummary()
     for account in accounts:
         nav = 0.0
         nav_str = ''
@@ -122,7 +120,7 @@ def getAccountDetails(ib, accounts, accountSummary=None):
         ret.append((account, nav_str, margin, cash_str, cash_percent))
     return ret
 
-def showAccountSummary(ib, console, accounts, accountSummary):
+def showAccountSummary(console, accounts, accountSummary):
     if verbose >= 3:
         printAccountSummary(accountSummary)
     table = Table(title='Account Summary')
@@ -133,8 +131,7 @@ def showAccountSummary(ib, console, accounts, accountSummary):
     table.add_column('NetLiq', justify='right')
     table.add_column('Margin', justify='right')
     table.add_column('Cash', justify='right')
-    for (account, nav, margin, cash, cash_percent) in getAccountDetails(ib, accounts,
-        accountSummary):
+    for (account, nav, margin, cash, cash_percent) in getAccountDetails(accounts, accountSummary):
         # XXX add info on time of last update
         if account == 'All':
             table.add_section()
@@ -310,7 +307,7 @@ def ShowITM(accounts, portfolio):
         print()
         print(f'List all In The Money (ITM) options for account {account}:')
         for p in pf:
-            print(f'{getPosition(p)} {getName(p)} with price {pi.marketPrice:.0f}')
+            print(f'{getPosition(p)} {getName(p)} with price {p.marketPrice:.0f}')
         print()
 
 # XXX Maybe list all individual short puts with their needed cash sum:
@@ -338,7 +335,7 @@ def showAccounts(ib, console, accounts=None, accountSummary=None):
     if accountSummary is None:
         accountSummary = ib.accountSummary()
 
-    showAccountSummary(ib, console, accounts, accountSummary)
+    showAccountSummary(console, accounts, accountSummary)
 
     if verbose >= 3:
         accountValues = ib.accountValues()
