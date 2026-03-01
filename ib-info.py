@@ -24,8 +24,8 @@
 #   - price underlying
 #   - list DTE for options
 #   - delta, gamma, theta, vega values
-#   - list all ITM options
 #   - list notional value of all stock option short puts
+#   - list all ITM options
 #   - list all options < 21 DTE, maybe only if delta is above a certain valuea
 # - summary per contract type and underlying
 # - overview pages markets
@@ -167,6 +167,15 @@ def getName(pi):
         name = f'{ct.symbol} {ct.right}{getStrike(ct)} {expiration}'
     return name
 
+def getDTE(contract):
+    expiration = contract.lastTradeDateOrContractMonth
+    if len(expiration) == 8:
+        dte = datetime.datetime.strptime(expiration, "%Y%m%d")
+    else:
+        dte = datetime.datetime.strptime(expiration, "%Y%m")
+    dte = dte.date() - datetime.date.today()
+    return dte.days
+
 def showPortfolioDebug(portfolio):
     print()
     print('Portfolio:')
@@ -195,19 +204,23 @@ def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
             if currency_options and (not isinstance(pi.contract, FuturesOption)
                 or pi.contract.symbol not in currency_symbols):
                 continue
-            pf.append((pi.position, getName(pi), pi.unrealizedPNL, pi.marketValue,
+            pf.append((pi, pi.position, getName(pi), pi.unrealizedPNL, pi.marketValue,
                 pi.marketPrice, pi.averageCost, pi.contract.currency))
         if not pf:
             continue
         # XXX sort pf
+        show_options_details = False
         if non_options:
             table = Table(title=f'Portfolio (ohne Optionen) von {account}')
         elif future_options:
             table = Table(title=f'Future-Optionen-Portfolio von {account}')
+            show_options_details = True
         elif options:
             table = Table(title=f'Options-Portfolio von {account}')
+            show_options_details = True
         elif currency_options:
             table = Table(title=f'Währungs-Portfolio von {account}')
+            show_options_details = True
         else:
             table = Table(title=f'Portfolio von {account}')
         table.add_column('Anzahl', justify='right')
@@ -218,10 +231,12 @@ def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
         table.add_column('Kostenbasis', justify='right')
         table.add_column('aktueller Kurs', justify='right')
         table.add_column('Durchschnittskurs', justify='right')
+        if show_options_details:
+            table.add_column('DTE', justify='right')
         #table.add_column('Kurs vom Basiswert', justify='right')
         sum_kostenbasis = 0.0
         sum_d = 0.0
-        for (pos, name, pnl, market_value, price, average_price, curr) in pf:
+        for (pi, pos, name, pnl, market_value, price, average_price, curr) in pf:
             curr = get_currency_symbol(curr)
             kostenbasis = pos * average_price
             sum_kostenbasis += kostenbasis
@@ -229,17 +244,26 @@ def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
             guv_prozent = 0.0
             if kostenbasis != 0.0:
                 guv_prozent = round((pnl / abs(kostenbasis)) * 100.0)
-            table.add_row(f'{pos:.0f}', str(name), f'{pnl:.0f} {curr}', f'{guv_prozent:.0f}%',
-                f'{market_value:.0f} {curr}', f'{kostenbasis:.0f} {curr}', str(price),
-                str(average_price))
+            if show_options_details:
+                table.add_row(f'{pos:.0f}', str(name), f'{pnl:.0f} {curr}', f'{guv_prozent:.0f}%',
+                    f'{market_value:.0f} {curr}', f'{kostenbasis:.0f} {curr}', str(price),
+                              str(average_price), f'{getDTE(pi.contract):.0f}')
+            else:
+                table.add_row(f'{pos:.0f}', str(name), f'{pnl:.0f} {curr}', f'{guv_prozent:.0f}%',
+                    f'{market_value:.0f} {curr}', f'{kostenbasis:.0f} {curr}', str(price),
+                    str(average_price))
         table.add_section()
         pnl = sum_d - sum_kostenbasis
         guv_prozent = .0
         if sum_kostenbasis != .0:
             guv_prozent = round((pnl / abs(sum_kostenbasis)) * 100.0)
         curr = 'X'  # XXX
-        table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
-            f'{sum_d:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '')
+        if show_options_details:
+            table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
+                f'{sum_d:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '', '')
+        else:
+            table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
+                f'{sum_d:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '')
         console.print(Panel(table))
     if verbose >= 3:
         showPortfolioDebug(portfolio)
