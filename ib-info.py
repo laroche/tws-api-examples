@@ -121,10 +121,8 @@ def getAccountDetails(ib, accounts, accountSummary=None):
         ret.append((account, nav_str, margin, cash_str, cash_percent))
     return ret
 
-def showAccountSummary(ib, console, accounts, accountSummary=None):
+def showAccountSummary(ib, console, accounts, accountSummary):
     myaccounts = accounts.copy()
-    if accountSummary is None:
-        accountSummary = ib.accountSummary()
     if verbose >= 3:
         printAccountSummary(accountSummary)
     table = Table(title='Account Summary')
@@ -134,8 +132,8 @@ def showAccountSummary(ib, console, accounts, accountSummary=None):
     table.add_column('NetLiq', justify='right')
     table.add_column('Margin', justify='right')
     table.add_column('Cash', justify='right')
-    for (account, nav, margin, cash, cash_percent) in getAccountDetails(ib,
-        myaccounts, accountSummary):
+    for (account, nav, margin, cash, cash_percent) in getAccountDetails(ib, myaccounts,
+        accountSummary):
         # XXX add info on time of last update
         if account == 'All':
             table.add_section()
@@ -336,6 +334,8 @@ def ShowNotionalValue(accounts, portfolio):
 def showAccounts(ib, console, accounts=None, accountSummary=None):
     if accounts is None:
         accounts = ib.managedAccounts()
+    if accountSummary is None:
+        accountSummary = ib.accountSummary()
 
     showAccountSummary(ib, console, accounts, accountSummary)
 
