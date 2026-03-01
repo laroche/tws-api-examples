@@ -148,16 +148,20 @@ def getStrike(contract):
         strike = strike[:-2]
     return strike
 
+cur_year = None
+
 def getName(pi):
+    global cur_year
     ct = pi.contract
     name = ct.localSymbol
     expiration = ct.lastTradeDateOrContractMonth
     if ShowYearWithTwoDigits:
         expiration = expiration[2:]
     elif DoNotShowCurrentYear:
-        today = datetime.date.today()
-        year = today.strftime("%Y") # today.year
-        if year == expiration[:4]:
+        if cur_year is None:
+            today = datetime.date.today()
+            cur_year = today.strftime("%Y") # today.year
+        if cur_year == expiration[:4]:
             expiration = expiration[4:]
     if isinstance(ct, (FuturesOption, Option)):
         name = f'{ct.symbol} {ct.right}{getStrike(ct)} {expiration}'
@@ -293,10 +297,11 @@ def showAccounts(ib, console, accounts=None, accountSummary=None):
 def usage():
     print('ib-info.py ' +
         '[--host=127.0.0.1][--port=7496][--client-id=0][--readonly][--acount=U12345]' +
+        '[--short-expire-format]' +
         '[--help][--verbose][--debug][--quiet]')
 
 def main(argv):
-    global verbose
+    global verbose, DoNotShowCurrentYear
     import getopt
 
     locale.setlocale(locale.LC_ALL, '')
@@ -324,6 +329,7 @@ def main(argv):
     try:
         opts, args = getopt.getopt(argv, 'adhipqrv', ['help',
             'host=', 'port=', 'client-id=', 'readonly', 'account=',
+            'short-expire-format',
             'quiet', 'verbose', 'debug'])
     except getopt.GetoptError:
         usage()
@@ -342,6 +348,8 @@ def main(argv):
             readonly = True
         elif opt in ('-a', '--account'):
             account = arg
+        elif opt == '--short-expire-format':
+            DoNotShowCurrentYear = True
         elif opt in ('-v', '--verbose'):
             verbose += 1
         elif opt in ('-d', '--debug'):
