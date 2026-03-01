@@ -247,7 +247,7 @@ def showPortfolio(console, accounts, portfolio, non_options=False,
             sum_d += market_value
             guv_prozent = 0.0
             if kostenbasis != 0.0:
-                guv_prozent = round((pnl / abs(kostenbasis)) * 100.0)
+                guv_prozent = (pnl / abs(kostenbasis)) * 100.0
             if show_options_details:
                 table.add_row(f'{getPosition(pi)}', str(name), f'{pnl:.0f} {curr}',
                     f'{guv_prozent:.0f}%', f'{market_value:.0f} {curr}',
@@ -260,9 +260,9 @@ def showPortfolio(console, accounts, portfolio, non_options=False,
                     str(price), str(average_price))
         table.add_section()
         pnl = sum_d - sum_kostenbasis
-        guv_prozent = .0
-        if sum_kostenbasis != .0:
-            guv_prozent = round((pnl / abs(sum_kostenbasis)) * 100.0)
+        guv_prozent = 0.0
+        if sum_kostenbasis != 0.0:
+            guv_prozent = (pnl / abs(sum_kostenbasis)) * 100.0
         curr = 'X'  # XXX Do we mix differnet currencies here?
         if show_options_details:
             table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
