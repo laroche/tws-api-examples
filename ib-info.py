@@ -66,6 +66,7 @@ DoNotShowCurrentYear = False
 # and should be displayed within an extra overview page:
 currency_symbols = ('EUR', 'M6E')
 
+# How verbose should logging be?
 verbose = 1
 
 # Turn off some of the more annoying logging output from ib_async
@@ -177,6 +178,9 @@ def getDTE(contract):
     if len(expiration) == 8:
         dte = datetime.datetime.strptime(expiration, "%Y%m%d")
     else:
+        raise
+        # XXX Does this happen? Should we then find the date of
+        # the monthly expiration as extra search?
         dte = datetime.datetime.strptime(expiration, "%Y%m")
     dte = dte.date() - datetime.date.today()
     return dte.days
