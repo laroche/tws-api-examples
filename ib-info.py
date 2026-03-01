@@ -206,8 +206,7 @@ def showPortfolio(console, accounts, portfolio, non_options=False,
             if currency_options and (not isinstance(pi.contract, FuturesOption)
                 or pi.contract.symbol not in currency_symbols):
                 continue
-            pf.append((pi, pi.position, getName(pi.contract), pi.unrealizedPNL, pi.marketValue,
-                pi.marketPrice, pi.averageCost, pi.contract.currency))
+            pf.append(pi)
         if not pf:
             continue
         # XXX sort pf
@@ -238,24 +237,26 @@ def showPortfolio(console, accounts, portfolio, non_options=False,
             #table.add_column('Kurs vom Basiswert', justify='right')
         sum_kostenbasis = 0.0
         sum_d = 0.0
-        for (pi, pos, name, pnl, market_value, price, average_price, curr) in pf:
-            curr = get_currency_symbol(curr)
-            kostenbasis = pos * average_price
+        for pi in pf:
+            pnl = pi.unrealizedPNL
+            curr = get_currency_symbol(pi.contract.currency)
+            kostenbasis = pi.position * pi.averageCost
             sum_kostenbasis += kostenbasis
-            sum_d += market_value
+            sum_d += pi.marketValue
             guv_prozent = 0.0
             if kostenbasis != 0.0:
                 guv_prozent = (pnl / abs(kostenbasis)) * 100.0
+            name = getName(pi.contract)
             if show_options_details:
-                table.add_row(f'{getPosition(pi)}', str(name), f'{pnl:.0f} {curr}',
-                    f'{guv_prozent:.0f}%', f'{market_value:.0f} {curr}',
+                table.add_row(f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}',
+                    f'{guv_prozent:.0f}%', f'{pi.marketValue:.0f} {curr}',
                     f'{kostenbasis:.0f} {curr}',
-                    str(price), str(average_price), f'{getDTE(pi.contract):.0f}')
+                    f'{pi.marketPrice}', f'{pi.averageCost}', f'{getDTE(pi.contract):.0f}')
             else:
-                table.add_row(f'{getPosition(pi)}', str(name), f'{pnl:.0f} {curr}',
-                    f'{guv_prozent:.0f}%', f'{market_value:.0f} {curr}',
+                table.add_row(f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}',
+                    f'{guv_prozent:.0f}%', f'{pi.marketValue:.0f} {curr}',
                     f'{kostenbasis:.0f} {curr}',
-                    str(price), str(average_price))
+                    f'{pi.marketPrice}', f'{pi.averageCost}')
         table.add_section()
         pnl = sum_d - sum_kostenbasis
         guv_prozent = 0.0
