@@ -26,13 +26,18 @@
 #   - delta, gamma, theta, vega values
 #   - list all ITM options
 #   - list notional value of all stock option short puts
-#   - list all options < 21 DTE, maybe only if delta is above a certain value
+#   - list all options < 21 DTE, maybe only if delta is above a certain valuea
+#   - Allow to reduce expiration date output: remove year if current year.
+#     Or only list year with 2 digits.
 # - summary per contract type and underlying
 # - overview pages markets
 # - allow different sorting strategies for overview pages
 # - Should large numbers use "." as thousand separator?
 # - Output time of last data update into overview pages.
 # - Add cash-like symbols to amount of optional cash: SGOV/BIL, US-T-Bills, TLT...
+# - Change to asyncio usage for whole script.
+# - Add automatic trading.
+# - python: why is getopt a deprecated modul?
 #
 # pylint: disable=W0511,R0912,C0103,C0114,C0116
 #
@@ -208,7 +213,8 @@ def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
             if kostenbasis != 0.0:
                 guv_prozent = round((pnl / abs(kostenbasis)) * 100.0)
             table.add_row(f'{pos:.0f}', str(name), f'{pnl:.0f} {curr}', f'{guv_prozent:.0f}%',
-                f'{market_value:.0f} {curr}', f'{kostenbasis:.0f} {curr}', str(price), str(average_price))
+                f'{market_value:.0f} {curr}', f'{kostenbasis:.0f} {curr}', str(price),
+                str(average_price))
         table.add_section()
         pnl = sum_d - sum_kostenbasis
         guv_prozent = .0
