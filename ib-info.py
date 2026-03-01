@@ -22,7 +22,6 @@
 # - For currency overview futures are not yet considered.
 # - Add to options output:
 #   - price underlying
-#   - list DTE for options
 #   - delta, gamma, theta, vega values
 #   - list notional value of all stock option short puts
 #   - list all ITM options
@@ -31,7 +30,7 @@
 # - overview pages markets
 # - allow different sorting strategies for overview pages
 # - Should large numbers use "." as thousand separator?
-# - Output time of last data update into overview pages.
+# - Output time of last data update from TWS into overview pages.
 # - Add cash-like symbols to amount of optional cash: SGOV/BIL, US-T-Bills, TLT...
 # - Change to asyncio usage for whole script.
 # - Add automatic trading.
@@ -182,13 +181,8 @@ def showPortfolioDebug(portfolio):
     for p in portfolio:
         print(p)
 
-def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
+def showPortfolio(console, accounts, portfolio=None, non_options=False,
     future_options=False, options=False, currency_options=False):
-    if portfolio is None:
-        portfolio = ib.portfolio()
-    if not portfolio:
-        print('ERROR: Could not read portfolio.')
-        return
     for account in accounts:
         pf = []
         for pi in portfolio:
@@ -226,14 +220,14 @@ def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
         table.add_column('Anzahl', justify='right')
         table.add_column('Name')
         table.add_column('GuV', justify='right')
-        table.add_column('GuV%', justify='right')
+        table.add_column('GuV %', justify='right')
         table.add_column('Marktwert', justify='right')
         table.add_column('Kostenbasis', justify='right')
         table.add_column('aktueller Kurs', justify='right')
         table.add_column('Durchschnittskurs', justify='right')
         if show_options_details:
             table.add_column('DTE', justify='right')
-        #table.add_column('Kurs vom Basiswert', justify='right')
+            #table.add_column('Kurs vom Basiswert', justify='right')
         sum_kostenbasis = 0.0
         sum_d = 0.0
         for (pi, pos, name, pnl, market_value, price, average_price, curr) in pf:
@@ -257,7 +251,7 @@ def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
         guv_prozent = .0
         if sum_kostenbasis != .0:
             guv_prozent = round((pnl / abs(sum_kostenbasis)) * 100.0)
-        curr = 'X'  # XXX
+        curr = 'X'  # XXX Do we mix differnet currencies here?
         if show_options_details:
             table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
                 f'{sum_d:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '', '')
@@ -265,8 +259,6 @@ def showPortfolio(ib, console, accounts, portfolio=None, non_options=False,
             table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
                 f'{sum_d:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '')
         console.print(Panel(table))
-    if verbose >= 3:
-        showPortfolioDebug(portfolio)
 
 def printAccountValues(accountValues):
     print()
@@ -285,11 +277,17 @@ def showAccounts(ib, console, accounts=None, accountSummary=None):
         printAccountValues(accountValues)
 
     portfolio = ib.portfolio()
-    showPortfolio(ib, console, accounts, portfolio)
-    showPortfolio(ib, console, accounts, portfolio, non_options=True)
-    showPortfolio(ib, console, accounts, portfolio, future_options=True)
-    showPortfolio(ib, console, accounts, portfolio, options=True)
-    showPortfolio(ib, console, accounts, portfolio, currency_options=True)
+    if not portfolio:
+        print('ERROR: Could not read portfolio.')
+        return
+    if verbose >= 3:
+        showPortfolioDebug(portfolio)
+
+    showPortfolio(console, accounts, portfolio)
+    showPortfolio(console, accounts, portfolio, non_options=True)
+    showPortfolio(console, accounts, portfolio, future_options=True)
+    showPortfolio(console, accounts, portfolio, options=True)
+    showPortfolio(console, accounts, portfolio, currency_options=True)
 
     # Less information compared to showPortfolio():
     if verbose >= 3:
