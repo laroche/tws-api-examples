@@ -142,25 +142,26 @@ def showAccountSummary(console, accounts, accountSummary):
         #table.add_column('Stocks: 400 T€ (20%)')
     console.print(Panel(table))
 
-def getStrike(contract):
-    strike = f'{contract.strike}'
-    if strike[-2:] == '.0':
-        strike = strike[:-2]
-    return strike
-
-cur_year = None
-
 def getPosition(pi):
     pos = f'{pi.position}'
     if pos[-2:] == '.0':
         pos = pos[:-2]
     return pos
 
-def getName(pi):
+def getStrike(contract):
+    strike = f'{contract.strike}'
+    if strike[-2:] == '.0':
+        strike = strike[:-2]
+    return strike
+
+# Current year:
+cur_year = None
+
+def getName(contract):
     global cur_year
-    ct = pi.contract
-    name = ct.localSymbol
-    expiration = ct.lastTradeDateOrContractMonth
+    if not isinstance(contract, (FuturesOption, Option)):
+        return contract.localSymbol
+    expiration = contract.lastTradeDateOrContractMonth
     if ShowYearWithTwoDigits:
         expiration = expiration[2:]
     elif DoNotShowCurrentYear:
@@ -169,9 +170,7 @@ def getName(pi):
             cur_year = today.strftime("%Y") # today.year
         if cur_year == expiration[:4]:
             expiration = expiration[4:]
-    if isinstance(ct, (FuturesOption, Option)):
-        name = f'{ct.symbol} {ct.right}{getStrike(ct)} {expiration}'
-    return name
+    return f'{contract.symbol} {contract.right}{getStrike(contract)} {expiration}'
 
 def getDTE(contract):
     expiration = contract.lastTradeDateOrContractMonth
@@ -207,7 +206,7 @@ def showPortfolio(console, accounts, portfolio, non_options=False,
             if currency_options and (not isinstance(pi.contract, FuturesOption)
                 or pi.contract.symbol not in currency_symbols):
                 continue
-            pf.append((pi, pi.position, getName(pi), pi.unrealizedPNL, pi.marketValue,
+            pf.append((pi, pi.position, getName(pi.contract), pi.unrealizedPNL, pi.marketValue,
                 pi.marketPrice, pi.averageCost, pi.contract.currency))
         if not pf:
             continue
@@ -290,7 +289,7 @@ def ShowLessThan21DTE(accounts, portfolio):
         print()
         print(f'List all options that expire in 21 DTE or less for account {account}:')
         for p in pf:
-            print(f'{getPosition(p)} {getName(p)} ({getDTE(p.contract)} DTE)')
+            print(f'{getPosition(p)} {getName(p.contract)} ({getDTE(p.contract)} DTE)')
         print()
 
 def ShowITM(accounts, portfolio):
@@ -310,7 +309,7 @@ def ShowITM(accounts, portfolio):
         print()
         print(f'List all In The Money (ITM) options for account {account}:')
         for p in pf:
-            print(f'{getPosition(p)} {getName(p)} with price {p.marketPrice:.0f}')
+            print(f'{getPosition(p)} {getName(p.contract)} with price {p.marketPrice:.0f}')
         print()
 
 # XXX Maybe list all individual short puts with their needed cash sum:
