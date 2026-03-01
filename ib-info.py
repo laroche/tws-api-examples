@@ -175,13 +175,12 @@ def getName(pi):
 
 def getDTE(contract):
     expiration = contract.lastTradeDateOrContractMonth
-    if len(expiration) == 8:
-        dte = datetime.datetime.strptime(expiration, "%Y%m%d")
-    else:
-        raise
+    if len(expiration) != 8:
         # XXX Does this happen? Should we then find the date of
         # the monthly expiration as extra search?
-        dte = datetime.datetime.strptime(expiration, "%Y%m")
+        #dte = datetime.datetime.strptime(expiration, "%Y%m")
+        raise ValueError(f'Expiration date ({expiration}) has not length of 8.')
+    dte = datetime.datetime.strptime(expiration, "%Y%m%d")
     dte = dte.date() - datetime.date.today()
     return dte.days
 
@@ -291,7 +290,7 @@ def ShowLessThan21DTE(accounts, portfolio):
         print()
         print(f'List all options that expire in 21 DTE or less for account {account}:')
         for p in pf:
-            print(f'{getPosition(p)} {getName(p)} ({getDTE(p.contract)}DTE)')
+            print(f'{getPosition(p)} {getName(p)} ({getDTE(p.contract)} DTE)')
         print()
 
 def ShowITM(accounts, portfolio):
