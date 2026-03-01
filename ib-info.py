@@ -236,13 +236,13 @@ def showPortfolio(console, accounts, portfolio, non_options=False,
             table.add_column('DTE', justify='right')
             #table.add_column('Kurs vom Basiswert', justify='right')
         sum_kostenbasis = 0.0
-        sum_d = 0.0
+        sum_marketValue = 0.0
         for pi in pf:
             pnl = pi.unrealizedPNL
             curr = get_currency_symbol(pi.contract.currency)
             kostenbasis = pi.position * pi.averageCost
             sum_kostenbasis += kostenbasis
-            sum_d += pi.marketValue
+            sum_marketValue += pi.marketValue
             guv_prozent = 0.0
             if kostenbasis != 0.0:
                 guv_prozent = (pnl / abs(kostenbasis)) * 100.0
@@ -258,17 +258,17 @@ def showPortfolio(console, accounts, portfolio, non_options=False,
                     f'{kostenbasis:.0f} {curr}',
                     f'{pi.marketPrice}', f'{pi.averageCost}')
         table.add_section()
-        pnl = sum_d - sum_kostenbasis
+        pnl = sum_marketValue - sum_kostenbasis
         guv_prozent = 0.0
         if sum_kostenbasis != 0.0:
             guv_prozent = (pnl / abs(sum_kostenbasis)) * 100.0
         curr = 'X'  # XXX Do we mix differnet currencies here?
         if show_options_details:
             table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
-                f'{sum_d:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '', '')
+                f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '', '')
         else:
             table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
-                f'{sum_d:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '')
+                f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '')
         console.print(Panel(table))
 
 def printAccountValues(accountValues):
