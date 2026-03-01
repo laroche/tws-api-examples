@@ -16,6 +16,9 @@
 # -Xmx4096m
 #
 # TODO:
+# - Translate all prices into Euro as an option.
+# - Fix summary currency on overview pages.
+# - Allow translation of output into different languages.
 # - For currency overview futures are not yet considered.
 # - Add to options output:
 #   - price underlying
@@ -26,6 +29,10 @@
 #   - list all options < 21 DTE, maybe only if delta is above a certain value
 # - summary per contract type and underlying
 # - overview pages markets
+# - allow different sorting strategies for overview pages
+# - Should large numbers use "." as thousand separator?
+# - Output time of last data update into overview pages.
+# - Add cash-like symbols to amount of optional cash: SGOV/BIL, US-T-Bills, TLT...
 #
 # pylint: disable=W0511,R0912,C0103,C0114,C0116
 #
@@ -41,7 +48,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-# Futures and Futures-Options that are use for currency hedging
+# Futures and Futures-Options that are used for currency hedging
 # and should be displayed within an extra overview page:
 currency_symbols = ('EUR', 'M6E')
 
