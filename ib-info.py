@@ -30,6 +30,7 @@
 #   - list all long optins with DTE < 60(?) that should get rolled (hedges)
 #   - list all short options with delta > 40 that should get rolled
 #     - calculate the best delta for rolling options by looking at current prices
+#   - grouping of complex (future) options
 # - summary per contract type and underlying
 # - overview pages markets
 # - allow different sorting strategies for overview pages
@@ -122,17 +123,17 @@ def getAccountDetails(ib, accounts, accountSummary=None):
     return ret
 
 def showAccountSummary(ib, console, accounts, accountSummary):
-    myaccounts = accounts.copy()
     if verbose >= 3:
         printAccountSummary(accountSummary)
     table = Table(title='Account Summary')
-    if len(myaccounts) > 1:
-        myaccounts.append('All')
+    if len(accounts) > 1:
+        accounts = accounts.copy()
+        accounts.append('All')
     table.add_column('Account')
     table.add_column('NetLiq', justify='right')
     table.add_column('Margin', justify='right')
     table.add_column('Cash', justify='right')
-    for (account, nav, margin, cash, cash_percent) in getAccountDetails(ib, myaccounts,
+    for (account, nav, margin, cash, cash_percent) in getAccountDetails(ib, accounts,
         accountSummary):
         # XXX add info on time of last update
         if account == 'All':
