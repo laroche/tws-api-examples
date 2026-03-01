@@ -277,18 +277,18 @@ def printAccountValues(accountValues):
     for a in accountValues:
         print(a)
 
-def ShowLessThan21DTE(accounts, portfolio):
+def ShowLessThanDTE(accounts, portfolio, dte):
     for account in accounts:
         pf = []
         for pi in portfolio:
             if pi.account != account or not isinstance(pi.contract, Option):
                 continue
-            if getDTE(pi.contract) <= 21:
+            if getDTE(pi.contract) <= dte:
                 pf.append(pi)
         if not pf:
             continue
         print()
-        print(f'List all options that expire in 21 DTE or less for account {account}:')
+        print(f'List all options that expire in {dte} DTE or less for account {account}:')
         for p in pf:
             print(f'{getPosition(p)} {getName(p.contract)} ({getDTE(p.contract)} DTE)')
         print()
@@ -355,7 +355,8 @@ def showAccounts(ib, console, accounts=None, accountSummary=None):
     showPortfolio(console, accounts, portfolio, non_options=True)
     showPortfolio(console, accounts, portfolio, future_options=True)
     showPortfolio(console, accounts, portfolio, options=True)
-    ShowLessThan21DTE(accounts, portfolio)
+    ShowLessThanDTE(accounts, portfolio, 21)
+    ShowLessThanDTE(accounts, portfolio, 2)
     #ShowITM(accounts, portfolio)
     ShowNotionalValue(accounts, portfolio)
     showPortfolio(console, accounts, portfolio, currency_options=True)
