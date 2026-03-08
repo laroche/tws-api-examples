@@ -67,7 +67,7 @@ DoNotShowCurrentYear = False
 
 # Futures and Futures-Options that are used for currency hedging
 # and should be displayed within an extra overview page:
-CURRENCY_SYMBOLS = ('EUR', 'M6E')
+CURRENCY_SYMBOLS = {'EUR', 'M6E'}
 
 # How verbose should logging be?
 verbose = 1
@@ -88,6 +88,9 @@ logger = logging.getLogger(__name__)
 #    client_id: int = 0
 #    account: str = ''
 #    readonly: bool = False
+#    show_year_with_two_digits: bool = False
+#    do_not_show_current_year: bool = False
+#    verbose: int = 1
 #
 #    @classmethod
 #    def from_env(cls) -> 'IBConfig':
@@ -179,17 +182,14 @@ def showAccountSummary(console: Console, accounts: List[str],
         #table.add_column('Stocks: 400 T€ (20%)')
     console.print(Panel(table))
 
+def strip_decimal_zero(value: str) -> str:
+    return value[:-2] if value.endswith('.0') else value
+
 def getPosition(pi: ib_async.PortfolioItem) -> str:
-    pos = f'{pi.position}'
-    if pos.endswith('.0'):
-        pos = pos[:-2]
-    return pos
+    return strip_decimal_zero(f'{pi.position}')
 
 def getStrike(contract):
-    strike = f'{contract.strike}'
-    if strike.endswith('.0'):
-        strike = strike[:-2]
-    return strike
+    return strip_decimal_zero(f'{contract.strike}')
 
 # Current year:
 cur_year = None
@@ -222,6 +222,16 @@ def showPortfolioDebug(portfolio):
     print('Portfolio:')
     for p in portfolio:
         print(p)
+
+#def filter_portfolio(portfolio, account, non_options=False, future_options=False,
+#    options=False, currency_options=False):
+#    for pi in portfolio:
+#        if pi.account != account:
+#            continue
+#        if non_options and isinstance(pi.contract, (FuturesOption, Option)):
+#            continue
+#        # ... etc
+#        yield pi
 
 def showPortfolio(console: Console, accounts: List[str], portfolio: List['PortfolioItem'],
     non_options: bool = False, future_options: bool = False, options: bool = False,
