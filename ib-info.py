@@ -43,7 +43,7 @@
 # pylint: disable=W0511,R0912,C0103,C0114,C0115,C0116
 #
 
-from typing import List
+from typing import List, Tuple
 #from typing import Optional
 from dataclasses import dataclass
 import sys
@@ -131,7 +131,8 @@ def printAccountSummary(accountSummary):
         for a in accountSummary:
             print(a)
 
-def getAccountDetails(accounts, accountSummary):
+def getAccountDetails(accounts: List[str],
+    accountSummary: list[ib_async.AccountValue]) -> List[Tuple[str, str, str, str, str]]:
     ret = []
     for account in accounts:
         nav = 0.0
@@ -157,7 +158,7 @@ def getAccountDetails(accounts, accountSummary):
         ret.append((account, nav_str, margin, cash_str, cash_percent))
     return ret
 
-def showAccountSummary(console, accounts, accountSummary):
+def showAccountSummary(console: Console, accounts: List[str], accountSummary):
     if verbose >= 3:
         printAccountSummary(accountSummary)
     table = Table(title='Account Summary')
@@ -178,7 +179,7 @@ def showAccountSummary(console, accounts, accountSummary):
         #table.add_column('Stocks: 400 T€ (20%)')
     console.print(Panel(table))
 
-def getPosition(pi: 'PortfolioItem') -> str:
+def getPosition(pi: ib_async.PortfolioItem) -> str:
     pos = f'{pi.position}'
     if pos.endswith('.0'):
         pos = pos[:-2]
@@ -315,7 +316,7 @@ def printAccountValues(accountValues):
     for a in accountValues:
         print(a)
 
-def ShowLessThanDTE(accounts, portfolio, dte):
+def ShowLessThanDTE(accounts: List[str], portfolio, dte):
     for account in accounts:
         pf = []
         for pi in portfolio:
@@ -331,7 +332,7 @@ def ShowLessThanDTE(accounts, portfolio, dte):
             print(f'{getPosition(p)} {getName(p.contract)} ({getDTE(p.contract)} DTE)')
         print()
 
-def ShowITM(accounts, portfolio):
+def ShowITM(accounts: List[str], portfolio):
     for account in accounts:
         pf = []
         for pi in portfolio:
@@ -352,7 +353,7 @@ def ShowITM(accounts, portfolio):
         print()
 
 # XXX Maybe list all individual short puts with their needed cash sum:
-def ShowNotionalValue(accounts, portfolio):
+def ShowNotionalValue(accounts: List[str], portfolio):
     for account in accounts:
         curr = 'X' # XXX currency
         sum_sp = 0.0
@@ -370,7 +371,7 @@ def ShowNotionalValue(accounts, portfolio):
         print(f'Cash needed if all short puts get assigned for account {account}: {sum_sp:.0f} {curr}')
         print()
 
-async def showAccounts(ib, console, accounts=None, accountSummary=None):
+async def showAccounts(ib, console: Console, accounts=None, accountSummary=None):
     if accounts is None:
         accounts = ib.managedAccounts()
     if accountSummary is None:
