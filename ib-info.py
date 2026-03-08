@@ -28,7 +28,7 @@
 #     Show also needed cash as percentage of all available cash.
 #   - list all ITM options
 #   - list all options < 21 DTE, maybe only if delta is above a certain value
-#   - list all long optins with DTE < 60(?) that should get rolled (hedges)
+#   - list all long optins with DTE < 60(?) that should get rolled (hedges, Delta < 5)
 #   - list all short options with delta > 40 that should get rolled
 #     - calculate the best delta for rolling options by looking at current prices
 #   - grouping of complex (future) options
@@ -44,10 +44,14 @@
 # pylint: disable=W0511,R0912,C0103,C0114,C0116
 #
 
+from typing import List
+#from typing import Optional
+from dataclasses import dataclass
 import sys
 import locale
 import logging
 import datetime
+import argparse
 import configparser
 import asyncio
 import ib_async
@@ -65,10 +69,12 @@ DoNotShowCurrentYear = False
 
 # Futures and Futures-Options that are used for currency hedging
 # and should be displayed within an extra overview page:
-currency_symbols = ('EUR', 'M6E')
+CURRENCY_SYMBOLS = ('EUR', 'M6E')
 
 # How verbose should logging be?
 verbose = 1
+
+logger = logging.getLogger(__name__)
 
 # Turn off some of the more annoying logging output from ib_async
 #logging.getLogger('ib_async.ib').setLevel(logging.ERROR)
@@ -76,6 +82,23 @@ verbose = 1
 
 # XXX How to detect base currency?
 #BASE = '€'
+
+@dataclass
+class IBConfig:
+    host: str = '127.0.0.1'
+    port: int = 7496
+    client_id: int = 0
+    account: str = ''
+    readonly: bool = False
+
+    @classmethod
+    def from_env(cls) -> 'IBConfig':
+        """Load configuration from environment variables"""
+        return cls(
+            host=os.environ.get('IBKR_HOST', '127.0.0.1'),
+            port=int(os.environ.get('IBKR_PORT', 7496)),
+            # ... etc
+        )
 
 def readConfig(file_path):
     config = configparser.ConfigParser()
@@ -89,12 +112,12 @@ def readConfig(file_path):
     log_filename = config.get('logging', 'filename')
     return config
 
+currency_conversion = {
+    'EUR': '€',
+    'USD': '$'}
+
 def get_currency_symbol(curr):
-    if curr == 'EUR':
-        return '€'
-    if curr == 'USD':
-        return '$'
-    return curr
+    return currency_conversion.get(curr, curr)
 
 def print_data(value):
     #if value >= 980000:
@@ -155,15 +178,15 @@ def showAccountSummary(console, accounts, accountSummary):
         #table.add_column('Stocks: 400 T€ (20%)')
     console.print(Panel(table))
 
-def getPosition(pi):
+def getPosition(pi: 'PortfolioItem') -> str:
     pos = f'{pi.position}'
-    if pos[-2:] == '.0':
+    if pos.endswith('.0'):
         pos = pos[:-2]
     return pos
 
 def getStrike(contract):
     strike = f'{contract.strike}'
-    if strike[-2:] == '.0':
+    if strike.endswith('.0'):
         strike = strike[:-2]
     return strike
 
@@ -202,8 +225,8 @@ def showPortfolioDebug(portfolio):
     for p in portfolio:
         print(p)
 
-def showPortfolio(console, accounts, portfolio, non_options=False,
-    future_options=False, options=False, currency_options=False):
+def showPortfolio(console: Console, accounts: List[str], portfolio: List['PortfolioItem'],
+    non_options: bool = False, future_options: bool = False, options: bool = False, currency_options: bool = False):
     for account in accounts:
         pf = []
         for pi in portfolio:
@@ -212,12 +235,12 @@ def showPortfolio(console, accounts, portfolio, non_options=False,
             if non_options and isinstance(pi.contract, (FuturesOption, Option)):
                 continue
             if future_options and (not isinstance(pi.contract, FuturesOption)
-                or pi.contract.symbol in currency_symbols):
+                or pi.contract.symbol in CURRENCY_SYMBOLS):
                 continue
             if options and not isinstance(pi.contract, Option):
                 continue
             if currency_options and (not isinstance(pi.contract, FuturesOption)
-                or pi.contract.symbol not in currency_symbols):
+                or pi.contract.symbol not in CURRENCY_SYMBOLS):
                 continue
             pf.append(pi)
         if not pf:
@@ -359,8 +382,7 @@ async def showAccounts(ib, console, accounts=None, accountSummary=None):
 
     portfolio = ib.portfolio()
     if not portfolio:
-        print('ERROR: Could not read portfolio.')
-        # XXX logging
+        logger.error('Could not read portfolio.')
         return
     if verbose >= 3:
         showPortfolioDebug(portfolio)
@@ -418,7 +440,6 @@ async def main(argv):
     #print(locale.getlocale())
     #for key, value in locale.localeconv().items():
     #    print('%s: %s' % (key, value))
-    #logger = logging.getLogger(__name__)
 
     # Connect params to your Interactive Brokers (IB) TWS or IB Gateway:
     host = os.environ.get('IBKR_HOST', '127.0.0.1')
@@ -488,11 +509,12 @@ async def main(argv):
     try:
         await ib.connectAsync(host, port, clientId=client_id, readonly=readonly, account=account)
     except ConnectionRefusedError:
-        print('ERROR API connection failed: ConnectionRefusedError: '
+        logger.error('API connection failed: ConnectionRefusedError: '
               'Make sure API port on TWS/IBG is open.')
         sys.exit(1)
 
     #if ib.isConnected():
+    #await asyncio.sleep(1)
 
     console = Console()
 
@@ -541,9 +563,13 @@ async def main(argv):
 
     ib.disconnect()
 
-if __name__ == '__main__':
-    #p = argparse.ArgumentParser(description="Fetch 1-min bars for multiple symbols from IBKR")
+def create_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description='Display IBKR portfolio information')
+    parser.add_argument('--host', default='127.0.0.1')
+    parser.add_argument('--port', type=int, default=7496)
     #p.add_argument("symbols", nargs="+", help="One or more ticker symbols, e.g. AAPL MSFT TSLA")
     #args = p.parse_args()
+    return parser
 
+if __name__ == '__main__':
     asyncio.run(main(sys.argv[1:]))
