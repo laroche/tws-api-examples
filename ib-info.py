@@ -44,15 +44,13 @@
 #
 
 from typing import List, Tuple
-#from typing import Optional
-from dataclasses import dataclass
+#from dataclasses import dataclass
 import sys
 import os
 import locale
 import logging
 import datetime
 import argparse
-import configparser
 import asyncio
 import ib_async
 from ib_async.contract import FuturesOption, Option
@@ -83,34 +81,35 @@ logger = logging.getLogger(__name__)
 # XXX How to detect base currency?
 #BASE = '€'
 
-@dataclass
-class IBConfig:
-    host: str = '127.0.0.1'
-    port: int = 7496
-    client_id: int = 0
-    account: str = ''
-    readonly: bool = False
+#@dataclass
+#class IBConfig:
+#    host: str = '127.0.0.1'
+#    port: int = 7496
+#    client_id: int = 0
+#    account: str = ''
+#    readonly: bool = False
+#
+#    @classmethod
+#    def from_env(cls) -> 'IBConfig':
+#        """Load configuration from environment variables"""
+#        return cls(
+#            host=os.environ.get('IBKR_HOST', '127.0.0.1'),
+#            port=int(os.environ.get('IBKR_PORT', 7496)),
+#            # ... etc
+#        )
 
-    @classmethod
-    def from_env(cls) -> 'IBConfig':
-        """Load configuration from environment variables"""
-        return cls(
-            host=os.environ.get('IBKR_HOST', '127.0.0.1'),
-            port=int(os.environ.get('IBKR_PORT', 7496)),
-            # ... etc
-        )
-
-def readConfig(file_path):
-    config = configparser.ConfigParser()
-    config.read(file_path)
-
-    ib_host = config.get('ib_connection', 'host')
-    ib_port = config.getint('ib_connection', 'port')
-    ib_client_id = config.getint('ib_connection', 'client_id')
-
-    log_level = config.get('logging', 'level').upper()
-    log_filename = config.get('logging', 'filename')
-    return config
+#def readConfig(file_path):
+#    import configparser
+#    config = configparser.ConfigParser()
+#    config.read(file_path)
+#
+#    ib_host = config.get('ib_connection', 'host')
+#    ib_port = config.getint('ib_connection', 'port')
+#    ib_client_id = config.getint('ib_connection', 'client_id')
+#
+#    log_level = config.get('logging', 'level').upper()
+#    log_filename = config.get('logging', 'filename')
+#    return config
 
 currency_conversion = {
     'EUR': '€',
@@ -124,7 +123,7 @@ def print_data(value):
     #    return locale.format_string('%d', round(value / 1000), grouping=True) + 'T'
     return locale.format_string('%d', round(value), grouping=True)
 
-def printAccountSummary(accountSummary):
+def printAccountSummary(accountSummary: list[ib_async.AccountValue]):
     print()
     print('Account Summary:')
     if accountSummary is not None:
@@ -158,7 +157,8 @@ def getAccountDetails(accounts: List[str],
         ret.append((account, nav_str, margin, cash_str, cash_percent))
     return ret
 
-def showAccountSummary(console: Console, accounts: List[str], accountSummary):
+def showAccountSummary(console: Console, accounts: List[str],
+    accountSummary: list[ib_async.AccountValue]):
     if verbose >= 3:
         printAccountSummary(accountSummary)
     table = Table(title='Account Summary')
