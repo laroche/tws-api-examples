@@ -39,11 +39,18 @@
 # - Output time of last data update from TWS into overview pages.
 # - Add cash-like symbols to amount of optional cash: SGOV/BIL, US-T-Bills, TLT...
 # - Add automatic trading.
+# - pip install mypy
+#   mypy your_file.py
+# - Create a pyproject.toml or setup.cfg:
+#   [tool.mypy]
+#   python_version = "3.10"
+#   warn_return_any = true
+#   warn_unused_configs = true
+#   disallow_untyped_defs = true
 #
 # pylint: disable=W0511,R0912,C0103,C0114,C0115,C0116
 #
 
-from typing import List, Tuple
 #from dataclasses import dataclass
 import sys
 import os
@@ -118,23 +125,23 @@ currency_conversion = {
     'EUR': '€',
     'USD': '$'}
 
-def get_currency_symbol(curr):
+def get_currency_symbol(curr: str) -> str:
     return currency_conversion.get(curr, curr)
 
-def print_data(value):
+def print_data(value: float) -> str:
     #if value >= 980000:
     #    return locale.format_string('%d', round(value / 1000), grouping=True) + 'T'
     return locale.format_string('%d', round(value), grouping=True)
 
-def printAccountSummary(accountSummary: List[ib_async.AccountValue]):
+def printAccountSummary(accountSummary: list[ib_async.AccountValue]):
     print()
     print('Account Summary:')
     if accountSummary is not None:
         for a in accountSummary:
             print(a)
 
-def getAccountDetails(accounts: List[str],
-    accountSummary: List[ib_async.AccountValue]) -> List[Tuple[str, str, str, str, str]]:
+def getAccountDetails(accounts: list[str],
+    accountSummary: list[ib_async.AccountValue]) -> list[tuple[str, str, str, str, str]]:
     ret = []
     for account in accounts:
         nav = 0.0
@@ -160,8 +167,8 @@ def getAccountDetails(accounts: List[str],
         ret.append((account, nav_str, margin, cash_str, cash_percent))
     return ret
 
-def showAccountSummary(console: Console, accounts: List[str],
-    accountSummary: List[ib_async.AccountValue]):
+def showAccountSummary(console: Console, accounts: list[str],
+    accountSummary: list[ib_async.AccountValue]):
     if verbose >= 3:
         printAccountSummary(accountSummary)
     table = Table(title='Account Summary')
@@ -233,7 +240,7 @@ def showPortfolioDebug(portfolio):
 #        # ... etc
 #        yield pi
 
-def showPortfolio(console: Console, accounts: List[str], portfolio: List['PortfolioItem'],
+def showPortfolio(console: Console, accounts: list[str], portfolio: list[ib_async.PortfolioItem],
     non_options: bool = False, future_options: bool = False, options: bool = False,
     currency_options: bool = False):
     for account in accounts:
@@ -322,7 +329,7 @@ def printAccountValues(accountValues):
     for a in accountValues:
         print(a)
 
-def ShowLessThanDTE(accounts: List[str], portfolio, dte):
+def ShowLessThanDTE(accounts: list[str], portfolio, dte):
     for account in accounts:
         pf = []
         for pi in portfolio:
@@ -338,7 +345,7 @@ def ShowLessThanDTE(accounts: List[str], portfolio, dte):
             print(f'{getPosition(p)} {getName(p.contract)} ({getDTE(p.contract)} DTE)')
         print()
 
-def ShowITM(accounts: List[str], portfolio):
+def ShowITM(accounts: list[str], portfolio):
     for account in accounts:
         pf = []
         for pi in portfolio:
@@ -359,7 +366,7 @@ def ShowITM(accounts: List[str], portfolio):
         print()
 
 # XXX Maybe list all individual short puts with their needed cash sum:
-def ShowNotionalValue(accounts: List[str], portfolio):
+def ShowNotionalValue(accounts: list[str], portfolio):
     for account in accounts:
         curr = 'X' # XXX currency
         sum_sp = 0.0
