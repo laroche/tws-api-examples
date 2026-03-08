@@ -39,7 +39,6 @@
 # - Output time of last data update from TWS into overview pages.
 # - Add cash-like symbols to amount of optional cash: SGOV/BIL, US-T-Bills, TLT...
 # - Add automatic trading.
-# - python: why is getopt a deprecated modul? -> argparse
 #
 # pylint: disable=W0511,R0912,C0103,C0114,C0115,C0116
 #
@@ -433,9 +432,62 @@ def usage():
         '[--short-expire-format]' +
         '[--help][--verbose][--debug][--quiet]')
 
+def create_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description='Display IBKR portfolio information',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  python ib-info.py --host 127.0.0.1 --port 7496 -v
+  python ib-info.py --account U12345 --readonly
+  python ib-info.py --debug --short-expire-format
+        ''')
+    # Connection parameters
+    parser.add_argument('--host',
+        default=os.environ.get('IBKR_HOST', '127.0.0.1'),
+        help='TWS/IB-Gateway host (default: %(default)s)')
+    parser.add_argument('-p', '--port',
+        type=int,
+        default=int(os.environ.get('IBKR_PORT', 7496)),
+        help='TWS/IB-Gateway port (default: %(default)s)')
+    #port 7497: TWS paper account (demo/test)
+    #port 7496: TWS active/real/live account
+    #port 4002: IB Gateway (IBG) paper account (demo/test)
+    #port 4001: IB Gateway (IBG) active/real/live account
+    parser.add_argument('-i', '--client-id',
+        type=int,
+        default=int(os.environ.get('IBKR_CLIENT_ID', 0)),
+        help='Client-ID for connection (default: %(default)s)')
+    # client_id must be unique per connection
+    # client_id 0 is getting all transactions, including also TWS.
+    # client_id 1 (configurable) is getting transactions from other client_ids, but not TWS.
+    parser.add_argument('-a', '--account',
+        default=os.environ.get('IBKR_ACCOUNT', ''),
+        help='Limit to specific account (default: all managed accounts)')
+    parser.add_argument('-r', '--readonly',
+        action='store_true',
+        help='Read-only mode (default: False)')
+    # Output formatting
+    parser.add_argument('--short-expire-format',
+        action='store_true',
+        dest='short_expire_format',
+        help='Do not show current year for expiration dates')
+    # Verbosity control
+    verbosity_group = parser.add_mutually_exclusive_group()
+    verbosity_group.add_argument('-v', '--verbose',
+        action='count',
+        default=1,
+        help='Increase verbosity (can be repeated: -vv for more verbose)')
+    verbosity_group.add_argument('-d', '--debug',
+        action='store_true',
+        help='Enable debug mode (equivalent to -vvv)')
+    verbosity_group.add_argument('-q', '--quiet',
+        action='store_true',
+        help='Suppress output (opposite of -v)')
+    return parser
+
 async def main(argv):
     global verbose, DoNotShowCurrentYear
-    import getopt
 
     locale.setlocale(locale.LC_ALL, '')
     #locale.setlocale(locale.LC_ALL, 'de_DE')
@@ -443,57 +495,22 @@ async def main(argv):
     #for key, value in locale.localeconv().items():
     #    print('%s: %s' % (key, value))
 
-    # Connect params to your Interactive Brokers (IB) TWS or IB Gateway:
-    host = os.environ.get('IBKR_HOST', '127.0.0.1')
-    port = int(os.environ.get('IBKR_PORT', 7496))
-    #port = 7497 # TWS paper account (demo/test)
-    #port = 7496  # TWS active/real/live account
-    #port = 4002 # IB Gateway (IBG) paper account (demo/test)
-    #port = 4001 # IB Gateway (IBG) active/real/live account
-    client_id = int(os.environ.get('IBKR_CLIENT_ID', 0))
-    # client_id must be unique per connection
-    # client_id 0 is getting all transactions, including also TWS.
-    # client_id 1 (configurable) is getting transactions from other client_ids, but not TWS.
-    # Only read access?
-    readonly = False
-    # Limit to a specific account:
-    account = os.environ.get('IBKR_ACCOUNT', '')
+    parser = create_parser()
+    args = parser.parse_args(argv)
+    host = args.host
+    port = args.port
+    client_id = args.client_id
+    account = args.account
+    readonly = args.readonly
+    DoNotShowCurrentYear = args.short_expire_format
+    if args.debug:
+        verbose = 3
+    elif args.quiet:
+        verbose = 0
+    else:
+        verbose = args.verbose
 
     #config = readConfig('ib-info.ini')
-
-    try:
-        opts, args = getopt.getopt(argv, 'adhipqrv', ['help',
-            'host=', 'port=', 'client-id=', 'readonly', 'account=',
-            'short-expire-format',
-            'quiet', 'verbose', 'debug'])
-    except getopt.GetoptError:
-        usage()
-        sys.exit(2)
-    for opt, arg in opts:
-        if opt in ('-h', '--help'):
-            usage()
-            sys.exit()
-        elif opt == '--host':
-            host = arg
-        elif opt in ('-p', '--port'):
-            port = int(arg)
-        elif opt in ('-i', '--client-id'):
-            client_id = int(arg)
-        elif opt  in ('-r', '--readonly'):
-            readonly = True
-        elif opt in ('-a', '--account'):
-            account = arg
-        elif opt == '--short-expire-format':
-            DoNotShowCurrentYear = True
-        elif opt in ('-v', '--verbose'):
-            verbose += 1
-        elif opt in ('-d', '--debug'):
-            verbose = 3
-        elif opt in ('-q', '--quiet'):
-            verbose = 0
-    #if len(args) == 0:
-    #    usage()
-    #    sys.exit()
 
     ib_async.util.allowCtrlC()
 
@@ -565,13 +582,6 @@ async def main(argv):
 
     ib.disconnect()
 
-def create_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description='Display IBKR portfolio information')
-    parser.add_argument('--host', default='127.0.0.1')
-    parser.add_argument('--port', type=int, default=7496)
-    #p.add_argument("symbols", nargs="+", help="One or more ticker symbols, e.g. AAPL MSFT TSLA")
-    #args = p.parse_args()
-    return parser
 
 if __name__ == '__main__':
     asyncio.run(main(sys.argv[1:]))
