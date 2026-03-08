@@ -41,13 +41,14 @@
 # - Add automatic trading.
 # - python: why is getopt a deprecated modul? -> argparse
 #
-# pylint: disable=W0511,R0912,C0103,C0114,C0116
+# pylint: disable=W0511,R0912,C0103,C0114,C0115,C0116
 #
 
 from typing import List
 #from typing import Optional
 from dataclasses import dataclass
 import sys
+import os
 import locale
 import logging
 import datetime
@@ -105,8 +106,8 @@ def readConfig(file_path):
     config.read(file_path)
 
     ib_host = config.get('ib_connection', 'host')
-    ib_port = int(config.getint('ib_connection', 'port'))
-    ib_client_id = int(config.getint('ib_connection', 'client_id'))
+    ib_port = config.getint('ib_connection', 'port')
+    ib_client_id = config.getint('ib_connection', 'client_id')
 
     log_level = config.get('logging', 'level').upper()
     log_filename = config.get('logging', 'filename')
@@ -214,6 +215,7 @@ def getDTE(contract):
         # XXX Does this happen? Should we then find the date of
         # the monthly expiration as extra search?
         #dte = datetime.datetime.strptime(expiration, "%Y%m")
+        logger.error(f'Wrong expiration date: {expiration} (length != 8).')
         raise ValueError(f'Expiration date ({expiration}) has not length of 8.')
     dte = datetime.datetime.strptime(expiration, "%Y%m%d")
     dte = dte.date() - datetime.date.today()
@@ -226,7 +228,8 @@ def showPortfolioDebug(portfolio):
         print(p)
 
 def showPortfolio(console: Console, accounts: List[str], portfolio: List['PortfolioItem'],
-    non_options: bool = False, future_options: bool = False, options: bool = False, currency_options: bool = False):
+    non_options: bool = False, future_options: bool = False, options: bool = False,
+    currency_options: bool = False):
     for account in accounts:
         pf = []
         for pi in portfolio:
@@ -433,7 +436,6 @@ def usage():
 async def main(argv):
     global verbose, DoNotShowCurrentYear
     import getopt
-    import os
 
     locale.setlocale(locale.LC_ALL, '')
     #locale.setlocale(locale.LC_ALL, 'de_DE')
