@@ -16,10 +16,11 @@
 # -Xmx4096m
 #
 # TODO:
+# - Make this also a web application.
 # - Translate all prices into Euro as an option.
 # - Fix summary currency on overview pages.
 # - Allow translation of output into different languages.
-# - For currency overview futures are not yet considered.
+# - For currency overview futures are not yet included.
 # - Add to options output:
 #   - price underlying
 #   - delta, gamma, theta, vega values
@@ -37,9 +38,8 @@
 # - Should large numbers use "." as thousand separator?
 # - Output time of last data update from TWS into overview pages.
 # - Add cash-like symbols to amount of optional cash: SGOV/BIL, US-T-Bills, TLT...
-# - Change to asyncio usage for whole script.
 # - Add automatic trading.
-# - python: why is getopt a deprecated modul?
+# - python: why is getopt a deprecated modul? -> argparse
 #
 # pylint: disable=W0511,R0912,C0103,C0114,C0116
 #
@@ -48,7 +48,8 @@ import sys
 import locale
 import logging
 import datetime
-#import asyncio
+import configparser
+import asyncio
 import ib_async
 from ib_async.contract import FuturesOption, Option
 
@@ -75,6 +76,18 @@ verbose = 1
 
 # XXX How to detect base currency?
 #BASE = '€'
+
+def readConfig(file_path):
+    config = configparser.ConfigParser()
+    config.read(file_path)
+
+    ib_host = config.get('ib_connection', 'host')
+    ib_port = int(config.getint('ib_connection', 'port'))
+    ib_client_id = int(config.getint('ib_connection', 'client_id'))
+
+    log_level = config.get('logging', 'level').upper()
+    log_filename = config.get('logging', 'filename')
+    return config
 
 def get_currency_symbol(curr):
     if curr == 'EUR':
@@ -332,11 +345,11 @@ def ShowNotionalValue(accounts, portfolio):
         print(f'Cash needed if all short puts get assigned for account {account}: {sum_sp:.0f} {curr}')
         print()
 
-def showAccounts(ib, console, accounts=None, accountSummary=None):
+async def showAccounts(ib, console, accounts=None, accountSummary=None):
     if accounts is None:
         accounts = ib.managedAccounts()
     if accountSummary is None:
-        accountSummary = ib.accountSummary()
+        accountSummary = await ib.accountSummaryAsync()
 
     showAccountSummary(console, accounts, accountSummary)
 
@@ -347,6 +360,7 @@ def showAccounts(ib, console, accounts=None, accountSummary=None):
     portfolio = ib.portfolio()
     if not portfolio:
         print('ERROR: Could not read portfolio.')
+        # XXX logging
         return
     if verbose >= 3:
         showPortfolioDebug(portfolio)
@@ -394,9 +408,10 @@ def usage():
         '[--short-expire-format]' +
         '[--help][--verbose][--debug][--quiet]')
 
-def main(argv):
+async def main(argv):
     global verbose, DoNotShowCurrentYear
     import getopt
+    import os
 
     locale.setlocale(locale.LC_ALL, '')
     #locale.setlocale(locale.LC_ALL, 'de_DE')
@@ -406,19 +421,22 @@ def main(argv):
     #logger = logging.getLogger(__name__)
 
     # Connect params to your Interactive Brokers (IB) TWS or IB Gateway:
-    host = '127.0.0.1'
+    host = os.environ.get('IBKR_HOST', '127.0.0.1')
+    port = int(os.environ.get('IBKR_PORT', 7496))
     #port = 7497 # TWS paper account (demo/test)
-    port = 7496  # TWS active/real/live account
+    #port = 7496  # TWS active/real/live account
     #port = 4002 # IB Gateway (IBG) paper account (demo/test)
     #port = 4001 # IB Gateway (IBG) active/real/live account
-    client_id = 0
+    client_id = int(os.environ.get('IBKR_CLIENT_ID', 0))
     # client_id must be unique per connection
     # client_id 0 is getting all transactions, including also TWS.
     # client_id 1 (configurable) is getting transactions from other client_ids, but not TWS.
     # Only read access?
     readonly = False
     # Limit to a specific account:
-    account = ''
+    account = os.environ.get('IBKR_ACCOUNT', '')
+
+    #config = readConfig('ib-info.ini')
 
     try:
         opts, args = getopt.getopt(argv, 'adhipqrv', ['help',
@@ -468,15 +486,22 @@ def main(argv):
 
     ib = ib_async.IB()
     try:
-        ib.connect(host, port, clientId=client_id, readonly=readonly, account=account)
+        await ib.connectAsync(host, port, clientId=client_id, readonly=readonly, account=account)
     except ConnectionRefusedError:
         print('ERROR API connection failed: ConnectionRefusedError: '
               'Make sure API port on TWS/IBG is open.')
         sys.exit(1)
 
+    #if ib.isConnected():
+
     console = Console()
 
-    showAccounts(ib, console)
+    await showAccounts(ib, console)
+
+    #tasks = []
+    #for symbol in symbols:
+    #    tasks.append(fetch_data(ib, symbol))
+    ##await asyncio.gather(*tasks)
 
     # ib.reqMarketDataType(self.config['account']['market_data_type'])
     # 3 == delayed
@@ -517,4 +542,8 @@ def main(argv):
     ib.disconnect()
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    #p = argparse.ArgumentParser(description="Fetch 1-min bars for multiple symbols from IBKR")
+    #p.add_argument("symbols", nargs="+", help="One or more ticker symbols, e.g. AAPL MSFT TSLA")
+    #args = p.parse_args()
+
+    asyncio.run(main(sys.argv[1:]))
