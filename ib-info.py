@@ -61,7 +61,7 @@ import datetime
 import argparse
 import asyncio
 import ib_async
-from ib_async.contract import FuturesOption, Option
+from ib_async import FuturesOption, Option, AccountValue, PortfolioItem
 
 from rich.console import Console
 from rich.panel import Panel
@@ -134,14 +134,14 @@ def print_data(value: float) -> str:
     #    return locale.format_string('%d', round(value / 1000), grouping=True) + 'T'
     return locale.format_string('%d', round(value), grouping=True)
 
-def printAccountSummary(accountSummary: list[ib_async.AccountValue]):
+def printAccountSummary(accountSummary: list[AccountValue]):
     print()
     print('Account Summary:')
     for a in accountSummary:
         print(a)
 
-def getAccountDetails(accounts: list[str],
-    accountSummary: list[ib_async.AccountValue]) -> list[tuple[str, str, str, str, str]]:
+def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -> list[tuple[str,
+    str, str, str, str]]:
     ret = []
     for account in accounts:
         nav = 0.0
@@ -167,8 +167,7 @@ def getAccountDetails(accounts: list[str],
         ret.append((account, nav_str, margin, cash_str, cash_percent))
     return ret
 
-def showAccountSummary(console: Console, accounts: list[str],
-    accountSummary: list[ib_async.AccountValue]):
+def showAccountSummary(console: Console, accounts: list[str], accountSummary: list[AccountValue]):
     if verbose >= 3:
         printAccountSummary(accountSummary)
     table = Table(title='Account Summary')
@@ -192,7 +191,7 @@ def showAccountSummary(console: Console, accounts: list[str],
 def strip_decimal_zero(value: str) -> str:
     return value[:-2] if value.endswith('.0') else value
 
-def getPosition(pi: ib_async.PortfolioItem) -> str:
+def getPosition(pi: PortfolioItem) -> str:
     return strip_decimal_zero(f'{pi.position}')
 
 def getStrike(contract):
@@ -224,14 +223,14 @@ def getDTE(contract) -> int:
     dte = dte.date() - datetime.date.today()
     return dte.days
 
-def showPortfolioDebug(portfolio):
+def showPortfolioDebug(portfolio: list[PortfolioItem]):
     print()
     print('Portfolio:')
     for p in portfolio:
         print(p)
 
-#def filter_portfolio(portfolio, account, non_options=False, future_options=False,
-#    options=False, currency_options=False):
+#def filter_portfolio(portfolio: list[PortfolioItem], account, non_options=False,
+#    future_options=False, options=False, currency_options=False):
 #    for pi in portfolio:
 #        if pi.account != account:
 #            continue
@@ -240,7 +239,7 @@ def showPortfolioDebug(portfolio):
 #        # ... etc
 #        yield pi
 
-def showPortfolio(console: Console, accounts: list[str], portfolio: list[ib_async.PortfolioItem],
+def showPortfolio(console: Console, accounts: list[str], portfolio: list[PortfolioItem],
     non_options: bool = False, future_options: bool = False, options: bool = False,
     currency_options: bool = False):
     for account in accounts:
@@ -323,13 +322,13 @@ def showPortfolio(console: Console, accounts: list[str], portfolio: list[ib_asyn
                 f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '')
         console.print(Panel(table))
 
-def printAccountValues(accountValues):
+def printAccountValues(accountValues: list[AccountValue]):
     print()
     print('Account Values:')
     for a in accountValues:
         print(a)
 
-def ShowLessThanDTE(accounts: list[str], portfolio, dte: int):
+def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: int):
     for account in accounts:
         pf = []
         for pi in portfolio:
@@ -345,7 +344,7 @@ def ShowLessThanDTE(accounts: list[str], portfolio, dte: int):
             print(f'{getPosition(p)} {getName(p.contract)} ({getDTE(p.contract)} DTE)')
         print()
 
-def ShowITM(accounts: list[str], portfolio):
+def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]):
     for account in accounts:
         pf = []
         for pi in portfolio:
@@ -366,7 +365,7 @@ def ShowITM(accounts: list[str], portfolio):
         print()
 
 # XXX Maybe list all individual short puts with their needed cash sum:
-def ShowNotionalValue(accounts: list[str], portfolio):
+def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]):
     for account in accounts:
         curr = 'X' # XXX currency
         sum_sp = 0.0
@@ -398,6 +397,7 @@ async def showAccounts(ib, console: Console, accounts=None, accountSummary=None)
 
     portfolio = ib.portfolio()
     if not portfolio:
+        # XXX allow empty portfolio?
         logger.error('Could not read portfolio.')
         return
     if verbose >= 3:
