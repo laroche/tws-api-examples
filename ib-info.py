@@ -32,6 +32,7 @@
 #   - list all short options with delta > 40 that should get rolled
 #     - calculate the best delta for rolling options by looking at current prices
 #   - grouping of complex (future) options
+#   - getDTE() output should get cached
 # - summary per contract type and underlying
 # - overview pages markets
 # - allow different sorting strategies for overview pages
@@ -68,16 +69,16 @@ from rich.table import Table
 
 # Output configuration:
 # Limit year of expiration date to 2 digits only:
-ShowYearWithTwoDigits = False
+ShowYearWithTwoDigits: bool = False
 # Do not show current year for expiration dates:
-DoNotShowCurrentYear = False
+DoNotShowCurrentYear: bool = False
 
 # Futures and Futures-Options that are used for currency hedging
 # and should be displayed within an extra overview page:
 CURRENCY_SYMBOLS = {'EUR', 'M6E'}
 
 # How verbose should logging be?
-verbose = 1
+verbose: int = 1
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +213,7 @@ def getName(contract):
             expiration = expiration[4:]
     return f'{contract.symbol} {contract.right}{getStrike(contract)} {expiration}'
 
-def getDTE(contract):
+def getDTE(contract) -> int:
     expiration = contract.lastTradeDateOrContractMonth
     if len(expiration) != 8:
         # XXX Does this happen? Should we then find the date of
@@ -329,7 +330,7 @@ def printAccountValues(accountValues):
     for a in accountValues:
         print(a)
 
-def ShowLessThanDTE(accounts: list[str], portfolio, dte):
+def ShowLessThanDTE(accounts: list[str], portfolio, dte: int):
     for account in accounts:
         pf = []
         for pi in portfolio:
