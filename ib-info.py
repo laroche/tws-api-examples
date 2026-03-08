@@ -123,7 +123,7 @@ def print_data(value):
     #    return locale.format_string('%d', round(value / 1000), grouping=True) + 'T'
     return locale.format_string('%d', round(value), grouping=True)
 
-def printAccountSummary(accountSummary: list[ib_async.AccountValue]):
+def printAccountSummary(accountSummary: List[ib_async.AccountValue]):
     print()
     print('Account Summary:')
     if accountSummary is not None:
@@ -131,7 +131,7 @@ def printAccountSummary(accountSummary: list[ib_async.AccountValue]):
             print(a)
 
 def getAccountDetails(accounts: List[str],
-    accountSummary: list[ib_async.AccountValue]) -> List[Tuple[str, str, str, str, str]]:
+    accountSummary: List[ib_async.AccountValue]) -> List[Tuple[str, str, str, str, str]]:
     ret = []
     for account in accounts:
         nav = 0.0
@@ -158,7 +158,7 @@ def getAccountDetails(accounts: List[str],
     return ret
 
 def showAccountSummary(console: Console, accounts: List[str],
-    accountSummary: list[ib_async.AccountValue]):
+    accountSummary: List[ib_async.AccountValue]):
     if verbose >= 3:
         printAccountSummary(accountSummary)
     table = Table(title='Account Summary')
@@ -195,16 +195,12 @@ def getStrike(contract):
 cur_year = None
 
 def getName(contract):
-    global cur_year
     if not isinstance(contract, (FuturesOption, Option)):
         return contract.localSymbol
     expiration = contract.lastTradeDateOrContractMonth
     if ShowYearWithTwoDigits:
         expiration = expiration[2:]
     elif DoNotShowCurrentYear:
-        if cur_year is None:
-            today = datetime.date.today()
-            cur_year = today.strftime("%Y") # today.year
         if cur_year == expiration[:4]:
             expiration = expiration[4:]
     return f'{contract.symbol} {contract.right}{getStrike(contract)} {expiration}'
@@ -488,7 +484,7 @@ Examples:
     return parser
 
 async def main(argv):
-    global verbose, DoNotShowCurrentYear
+    global verbose, DoNotShowCurrentYear, cur_year
 
     locale.setlocale(locale.LC_ALL, '')
     #locale.setlocale(locale.LC_ALL, 'de_DE')
@@ -504,6 +500,9 @@ async def main(argv):
     account = args.account
     readonly = args.readonly
     DoNotShowCurrentYear = args.short_expire_format
+    if DoNotShowCurrentYear:
+        today = datetime.date.today()
+        cur_year = today.strftime("%Y") # today.year
     if args.debug:
         verbose = 3
     elif args.quiet:
