@@ -137,9 +137,8 @@ def print_data(value: float) -> str:
 def printAccountSummary(accountSummary: list[ib_async.AccountValue]):
     print()
     print('Account Summary:')
-    if accountSummary is not None:
-        for a in accountSummary:
-            print(a)
+    for a in accountSummary:
+        print(a)
 
 def getAccountDetails(accounts: list[str],
     accountSummary: list[ib_async.AccountValue]) -> list[tuple[str, str, str, str, str]]:
@@ -512,11 +511,6 @@ async def main(argv):
 
     parser = create_parser()
     args = parser.parse_args(argv)
-    host = args.host
-    port = args.port
-    client_id = args.client_id
-    account = args.account
-    readonly = args.readonly
     DoNotShowCurrentYear = args.short_expire_format
     if DoNotShowCurrentYear:
         today = datetime.date.today()
@@ -544,7 +538,8 @@ async def main(argv):
 
     ib = ib_async.IB()
     try:
-        await ib.connectAsync(host, port, clientId=client_id, readonly=readonly, account=account)
+        await ib.connectAsync(args.host, args.port, clientId=args.client_id,
+                              readonly=args.readonly, account=args.account)
     except ConnectionRefusedError:
         logger.error('API connection failed: ConnectionRefusedError: '
               'Make sure API port on TWS/IBG is open.')
