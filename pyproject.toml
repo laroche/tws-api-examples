@@ -1,0 +1,18 @@
+[project]
+authors = [{ name = "Florian La Roche", email = "Florian.LaRoche@gmail.com" }]
+dependencies = [
+  "rich>=13.7.0,<15",
+  "ib-async>=2.0.1,<3",
+]
+description = "IBKR information"
+license = "MIT License"
+name = "tws-api-examples"
+readme = "README.md"
+requires-python = ">=3.10"
+version = "1.0.0"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

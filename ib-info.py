@@ -40,14 +40,6 @@
 # - Output time of last data update from TWS into overview pages.
 # - Add cash-like symbols to amount of optional cash: SGOV/BIL, US-T-Bills, TLT...
 # - Add automatic trading.
-# - pip install mypy
-#   mypy your_file.py
-# - Create a pyproject.toml or setup.cfg:
-#   [tool.mypy]
-#   python_version = "3.10"
-#   warn_return_any = true
-#   warn_unused_configs = true
-#   disallow_untyped_defs = true
 #
 # pylint: disable=W0511,R0912,C0103,C0114,C0115,C0116
 #
@@ -61,7 +53,7 @@ import datetime
 import argparse
 import asyncio
 import ib_async
-from ib_async import FuturesOption, Option, AccountValue, PortfolioItem
+from ib_async import IB, FuturesOption, Option, AccountValue, PortfolioItem, Contract
 
 from rich.console import Console
 from rich.panel import Panel
@@ -134,7 +126,7 @@ def print_data(value: float) -> str:
     #    return locale.format_string('%d', round(value / 1000), grouping=True) + 'T'
     return locale.format_string('%d', round(value), grouping=True)
 
-def printAccountSummary(accountSummary: list[AccountValue]):
+def printAccountSummary(accountSummary: list[AccountValue]) -> None:
     print()
     print('Account Summary:')
     for a in accountSummary:
@@ -157,8 +149,8 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
                 cash = float(p.value)
                 cash_str = print_data(cash) + get_currency_symbol(p.currency)
             elif p.tag == 'Cushion':
-                margin = (1.0 - float(p.value)) * 100.0
-                margin = f'{margin:.1f}%'
+                m = (1.0 - float(p.value)) * 100.0
+                margin = f'{m:.1f}%'
             elif p.tag == 'NetLiquidation':
                 nav = float(p.value)
                 nav_str = print_data(nav) + get_currency_symbol(p.currency)
@@ -167,7 +159,8 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
         ret.append((account, nav_str, margin, cash_str, cash_percent))
     return ret
 
-def showAccountSummary(console: Console, accounts: list[str], accountSummary: list[AccountValue]):
+def showAccountSummary(console: Console, accounts: list[str],
+    accountSummary: list[AccountValue]) -> None:
     if verbose >= 3:
         printAccountSummary(accountSummary)
     table = Table(title='Account Summary')
@@ -194,13 +187,13 @@ def strip_decimal_zero(value: str) -> str:
 def getPosition(pi: PortfolioItem) -> str:
     return strip_decimal_zero(f'{pi.position}')
 
-def getStrike(contract):
+def getStrike(contract: Contract) -> str:
     return strip_decimal_zero(f'{contract.strike}')
 
 # Current year:
-cur_year = None
+cur_year: str | None = None
 
-def getName(contract):
+def getName(contract: Contract) -> str:
     if not isinstance(contract, (FuturesOption, Option)):
         return contract.localSymbol
     expiration = contract.lastTradeDateOrContractMonth
@@ -211,19 +204,19 @@ def getName(contract):
             expiration = expiration[4:]
     return f'{contract.symbol} {contract.right}{getStrike(contract)} {expiration}'
 
-def getDTE(contract) -> int:
+def getDTE(contract: Contract) -> int:
     expiration = contract.lastTradeDateOrContractMonth
     if len(expiration) != 8:
         # XXX Does this happen? Should we then find the date of
         # the monthly expiration as extra search?
         #dte = datetime.datetime.strptime(expiration, "%Y%m")
-        logger.error(f'Wrong expiration date: {expiration} (length != 8).')
+        logger.error('Wrong expiration date: %s (length != 8).', expiration)
         raise ValueError(f'Expiration date ({expiration}) has not length of 8.')
-    dte = datetime.datetime.strptime(expiration, "%Y%m%d")
-    dte = dte.date() - datetime.date.today()
+    d = datetime.datetime.strptime(expiration, "%Y%m%d")
+    dte = d.date() - datetime.date.today()
     return dte.days
 
-def showPortfolioDebug(portfolio: list[PortfolioItem]):
+def showPortfolioDebug(portfolio: list[PortfolioItem]) -> None:
     print()
     print('Portfolio:')
     for p in portfolio:
@@ -241,7 +234,7 @@ def showPortfolioDebug(portfolio: list[PortfolioItem]):
 
 def showPortfolio(console: Console, accounts: list[str], portfolio: list[PortfolioItem],
     non_options: bool = False, future_options: bool = False, options: bool = False,
-    currency_options: bool = False):
+    currency_options: bool = False) -> None:
     for account in accounts:
         pf = []
         for pi in portfolio:
@@ -322,13 +315,13 @@ def showPortfolio(console: Console, accounts: list[str], portfolio: list[Portfol
                 f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '')
         console.print(Panel(table))
 
-def printAccountValues(accountValues: list[AccountValue]):
+def printAccountValues(accountValues: list[AccountValue]) -> None:
     print()
     print('Account Values:')
     for a in accountValues:
         print(a)
 
-def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: int):
+def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: int) -> None:
     for account in accounts:
         pf = []
         for pi in portfolio:
@@ -344,7 +337,7 @@ def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: in
             print(f'{getPosition(p)} {getName(p.contract)} ({getDTE(p.contract)} DTE)')
         print()
 
-def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]):
+def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
         pf = []
         for pi in portfolio:
@@ -365,7 +358,7 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]):
         print()
 
 # XXX Maybe list all individual short puts with their needed cash sum:
-def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]):
+def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
         curr = 'X' # XXX currency
         sum_sp = 0.0
@@ -383,7 +376,8 @@ def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]):
         print(f'Cash needed if all short puts get assigned for account {account}: {sum_sp:.0f} {curr}')
         print()
 
-async def showAccounts(ib, console: Console, accounts=None, accountSummary=None):
+async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = None,
+    accountSummary: list[AccountValue] | None = None) -> None:
     if accounts is None:
         accounts = ib.managedAccounts()
     if accountSummary is None:
@@ -440,7 +434,7 @@ async def showAccounts(ib, console: Console, accounts=None, accountSummary=None)
     #for trade in orders:
     #    print(f'{trade.contract.symbol}: {trade.order.action} {trade.order.totalQuantity}')
 
-def usage():
+def usage() -> None:
     print('ib-info.py ' +
         '[--host=127.0.0.1][--port=7496][--client-id=0][--readonly][--acount=U12345]' +
         '[--short-expire-format]' +
@@ -500,7 +494,7 @@ Examples:
         help='Suppress output (opposite of -v)')
     return parser
 
-async def main(argv):
+async def main(argv: list[str]) -> None:
     global verbose, DoNotShowCurrentYear, cur_year
 
     locale.setlocale(locale.LC_ALL, '')
@@ -536,7 +530,7 @@ async def main(argv):
         ib_async.util.logToConsole(logging.DEBUG)
     #ib_async.util.logToFile('ib.log', logging.WARNING)
 
-    ib = ib_async.IB()
+    ib = IB()
     try:
         await ib.connectAsync(args.host, args.port, clientId=args.client_id,
                               readonly=args.readonly, account=args.account)
