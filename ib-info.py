@@ -18,7 +18,6 @@
 # TODO:
 # - Make this also a web application.
 # - Translate all prices into Euro as an option.
-# - Fix summary currency on overview pages.
 # - Allow translation of output into different languages.
 # - For currency overview futures are not yet included.
 # - Add to options output:
@@ -31,6 +30,7 @@
 #   - list all long optins with DTE < 60(?) that should get rolled (hedges, Delta < 5)
 #   - list all short options with delta > 40 that should get rolled
 #     - calculate the best delta for rolling options by looking at current prices
+#   - list all short call options not covered by stock
 #   - grouping of complex (future) options
 #   - getDTE() output should get cached
 # - summary per contract type and underlying
@@ -45,6 +45,7 @@
 #
 
 #from dataclasses import dataclass
+from typing import cast
 import sys
 import os
 import locale
@@ -59,6 +60,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+# How verbose should logging be?
+verbose: int = 1
+
 # Output configuration:
 # Limit year of expiration date to 2 digits only:
 ShowYearWithTwoDigits: bool = False
@@ -68,9 +72,6 @@ DoNotShowCurrentYear: bool = False
 # Futures and Futures-Options that are used for currency hedging
 # and should be displayed within an extra overview page:
 CURRENCY_SYMBOLS = {'EUR', 'M6E'}
-
-# How verbose should logging be?
-verbose: int = 1
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,21 @@ logger = logging.getLogger(__name__)
 #    log_filename = config.get('logging', 'filename')
 #    return config
 
+async def qualify_contracts(ib: IB, *contracts: Contract) -> list[Contract]:
+    results = await ib.qualifyContractsAsync(*contracts)
+    # Filter out None values and flatten any nested lists
+    qualified: list[Contract] = []
+    for result in results:
+        if result is None:
+            pass
+        elif isinstance(result, list):
+            for contract in result:
+                if contract is not None:
+                    qualified.append(cast(Contract, contract))
+        else:
+            qualified.append(result)
+    return qualified
+
 currency_conversion = {
     'EUR': '€',
     'USD': '$'}
@@ -136,12 +152,7 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
     str, str, str, str]]:
     ret = []
     for account in accounts:
-        nav = 0.0
-        nav_str = ''
-        cash = 0.0
-        cash_str = ''
-        cash_percent = ''
-        margin = ''
+        (nav, nav_str, cash, cash_str, margin) = (0.0, '', 0.0, '', '')
         for p in accountSummary:
             if p.account != account:
                 continue
@@ -154,8 +165,9 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
             elif p.tag == 'NetLiquidation':
                 nav = float(p.value)
                 nav_str = print_data(nav) + get_currency_symbol(p.currency)
+        cash_percent = ''
         if nav > 0.0:
-            cash_percent = str(round(cash * 100 / nav)) + '%'
+            cash_percent = str(round(cash * 100.0 / nav)) + '%'
         ret.append((account, nav_str, margin, cash_str, cash_percent))
     return ret
 
@@ -171,14 +183,14 @@ def showAccountSummary(console: Console, accounts: list[str],
     table.add_column('NetLiq', justify='right')
     table.add_column('Margin', justify='right')
     table.add_column('Cash', justify='right')
+    #table.add_column('US-T: 120 T€ (7%)')
+    #table.add_column('Sold Options: -100(12000) (0,05%)')
+    #table.add_column('Stocks: 400 T€ (20%)')
     for (account, nav, margin, cash, cash_percent) in getAccountDetails(accounts, accountSummary):
         # XXX add info on time of last update
         if account == 'All':
             table.add_section()
         table.add_row(f'{account}', f'{nav}', f'{margin}', f'{cash} ({cash_percent})')
-        #table.add_column('US-T: 120 T€ (7%)')
-        #table.add_column('Sold Options: -100(12000) (0,05%)')
-        #table.add_column('Stocks: 400 T€ (20%)')
     console.print(Panel(table))
 
 def strip_decimal_zero(value: str) -> str:
@@ -232,6 +244,12 @@ def showPortfolioDebug(portfolio: list[PortfolioItem]) -> None:
 #        # ... etc
 #        yield pi
 
+def addSum(d: dict[str, list[float]], a: float, b: float, curr: str) -> None:
+    if d.get(curr, None) is None:
+        d[curr] = [0.0, 0.0]
+    d[curr][0] += a
+    d[curr][1] += b
+
 def showPortfolio(console: Console, accounts: list[str], portfolio: list[PortfolioItem],
     non_options: bool = False, future_options: bool = False, options: bool = False,
     currency_options: bool = False) -> None:
@@ -279,14 +297,12 @@ def showPortfolio(console: Console, accounts: list[str], portfolio: list[Portfol
         if show_options_details:
             table.add_column('DTE', justify='right')
             #table.add_column('Kurs vom Basiswert', justify='right')
-        sum_kostenbasis = 0.0
-        sum_marketValue = 0.0
+        summe: dict[str, list[float]] = {}
         for pi in pf:
             pnl = pi.unrealizedPNL
             curr = get_currency_symbol(pi.contract.currency)
             kostenbasis = pi.position * pi.averageCost
-            sum_kostenbasis += kostenbasis
-            sum_marketValue += pi.marketValue
+            addSum(summe, kostenbasis, pi.marketValue, curr)
             guv_prozent = 0.0
             if kostenbasis != 0.0:
                 guv_prozent = (pnl / abs(kostenbasis)) * 100.0
@@ -302,17 +318,18 @@ def showPortfolio(console: Console, accounts: list[str], portfolio: list[Portfol
                     f'{kostenbasis:.0f} {curr}',
                     f'{pi.marketPrice}', f'{pi.averageCost}')
         table.add_section()
-        pnl = sum_marketValue - sum_kostenbasis
-        guv_prozent = 0.0
-        if sum_kostenbasis != 0.0:
-            guv_prozent = (pnl / abs(sum_kostenbasis)) * 100.0
-        curr = 'X'  # XXX Do we mix differnet currencies here?
-        if show_options_details:
-            table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
-                f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '', '')
-        else:
-            table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
-                f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '')
+        for (curr, values) in summe.items():
+            (sum_kostenbasis, sum_marketValue) = values
+            pnl = sum_marketValue - sum_kostenbasis
+            guv_prozent = 0.0
+            if sum_kostenbasis != 0.0:
+                guv_prozent = (pnl / abs(sum_kostenbasis)) * 100.0
+            if show_options_details:
+                table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
+                    f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '', '')
+            else:
+                table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
+                    f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '')
         console.print(Panel(table))
 
 def printAccountValues(accountValues: list[AccountValue]) -> None:
@@ -344,10 +361,12 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
             ct = pi.contract
             if pi.account != account or not isinstance(ct, Option):
                 continue
-            # XXX pi.marketPrice should be market price of the underlying
-            if ct.right == 'P' and pi.marketPrice < ct.strike:
+            #ticker = await ibkr.get_ticker_for_stock(ct.symbol, ct.primaryExchange)
+            #marketPrice = ticker.marketPrice()
+            marketPrice = 0.0
+            if ct.right == 'P' and marketPrice <= ct.strike:
                 pf.append(pi)
-            if ct.right == 'C' and pi.marketPrice > ct.strike:
+            if ct.right == 'C' and marketPrice >= ct.strike:
                 pf.append(pi)
         if not pf:
             continue
@@ -357,23 +376,31 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
             print(f'{getPosition(p)} {getName(p.contract)} with price {p.marketPrice:.0f}')
         print()
 
+def addSum1(d: dict[str, float], a: float, curr: str) -> None:
+    if d.get(curr, None) is None:
+        d[curr] = 0.0
+    d[curr] -= a
+
 # XXX Maybe list all individual short puts with their needed cash sum:
 def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
-        curr = 'X' # XXX currency
-        sum_sp = 0.0
+        sum_sp: dict[str, float] = {}
         for pi in portfolio:
             ct = pi.contract
             if pi.account != account or not isinstance(ct, Option):
                 continue
             if ct.right == 'P' and pi.position < 0.0:
-                sum_sp -= ct.strike * pi.position * float(ct.multiplier)
-        if sum_sp == 0.0:
+                curr = get_currency_symbol(ct.currency)
+                addSum1(sum_sp, ct.strike * pi.position * float(ct.multiplier), curr)
+        if not sum_sp:
             continue
-        # XXX Show also needed cash as percentage of all available cash:
-        #cash_percent = str(round(sum_sp * 100.0 / all_cash)) + '%'
         print()
-        print(f'Cash needed if all short puts get assigned for account {account}: {sum_sp:.0f} {curr}')
+        for (curr, summe) in sum_sp.items():
+            if summe == 0.0:
+                continue
+            # XXX Show also needed cash as percentage of all available cash:
+            #cash_percent = str(round(sum_sp * 100.0 / all_cash)) + '%'
+            print(f'Cash needed if all short puts get assigned for account {account}: {summe:.0f} {curr}')
         print()
 
 async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = None,
@@ -480,6 +507,10 @@ Examples:
         action='store_true',
         dest='short_expire_format',
         help='Do not show current year for expiration dates')
+    parser.add_argument('--two-digit-years',
+        action='store_true',
+        dest='two_digit_years',
+        help='Show year output only with 2 digits instead of 4')
     # Verbosity control
     verbosity_group = parser.add_mutually_exclusive_group()
     verbosity_group.add_argument('-v', '--verbose',
@@ -495,7 +526,7 @@ Examples:
     return parser
 
 async def main(argv: list[str]) -> None:
-    global verbose, DoNotShowCurrentYear, cur_year
+    global verbose, DoNotShowCurrentYear, ShowYearWithTwoDigits, cur_year
 
     locale.setlocale(locale.LC_ALL, '')
     #locale.setlocale(locale.LC_ALL, 'de_DE')
@@ -505,6 +536,7 @@ async def main(argv: list[str]) -> None:
 
     parser = create_parser()
     args = parser.parse_args(argv)
+    ShowYearWithTwoDigits = args.two_digit_years
     DoNotShowCurrentYear = args.short_expire_format
     if DoNotShowCurrentYear:
         today = datetime.date.today()
