@@ -175,9 +175,7 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
             elif p.tag == 'NetLiquidation':
                 nav = float(p.value)
                 nav_str = print_data(nav) + get_currency_symbol(p.currency)
-        cash_percent = ''
-        if nav > 0.0:
-            cash_percent = str(round(cash * 100.0 / nav)) + '%'
+        cash_percent = str(round(cash * 100.0 / nav)) + '%' if nav > 0.0 else ''
         ret.append((account, nav_str, margin, cash_str, cash_percent))
     return ret
 
@@ -320,9 +318,7 @@ def showPortfolio(console: Console, accounts: list[str], portfolio: list[Portfol
         for (curr, values) in summe.items():
             (sum_kostenbasis, sum_marketValue) = values
             pnl = sum_marketValue - sum_kostenbasis
-            guv_prozent = 0.0
-            if sum_kostenbasis != 0.0:
-                guv_prozent = (pnl / abs(sum_kostenbasis)) * 100.0
+            guv_prozent = (pnl / abs(sum_kostenbasis)) * 100.0 if sum_kostenbasis != 0.0 else 0.0
             row = ['', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
                    f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '']
             if show_options_details:
