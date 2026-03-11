@@ -47,7 +47,6 @@
 #
 
 #from dataclasses import dataclass
-from typing import cast
 import sys
 import os
 import locale
@@ -131,17 +130,14 @@ logger = logging.getLogger(__name__)
 
 async def qualify_contracts(ib: IB, *contracts: Contract) -> list[Contract]:
     results = await ib.qualifyContractsAsync(*contracts)
-    # Filter out None values and flatten any nested lists
     qualified: list[Contract] = []
-    for result in results:
-        if result is None:
-            pass
-        elif isinstance(result, list):
-            for contract in result:
-                if contract is not None:
-                    qualified.append(cast(Contract, contract))
+    for r in results:
+        if r is None:
+            continue
+        if isinstance(r, list):
+            qualified.extend([c for c in r if c is not None])
         else:
-            qualified.append(result)
+            qualified.append(r)
     return qualified
 
 currency_conversion = {
@@ -577,7 +573,11 @@ async def main(argv: list[str]) -> None:
 
     ib = await safe_connect(args.host, args.port, args.client_id, args.readonly, args.account)
 
-    #if ib.isConnected():
+    #if not ib.isConnected():
+    #    logger.error('Not connected: Need to restart TWS/IBG.')
+    #    #sys.exit(1)
+    #    raise SystemExit(1)
+
     #await asyncio.sleep(1)
 
     console = Console()
