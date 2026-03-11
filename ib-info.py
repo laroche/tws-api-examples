@@ -40,6 +40,8 @@
 # - Output time of last data update from TWS into overview pages.
 # - Add cash-like symbols to amount of optional cash: SGOV/BIL, US-T-Bills, TLT...
 # - Add automatic trading.
+# - If TWS is suspended, this script times out without any real timeout.
+# - How to allow for re-connects?
 #
 # pylint: disable=W0511,R0912,C0103,C0114,C0115,C0116
 #
@@ -83,7 +85,7 @@ logger = logging.getLogger(__name__)
 #BASE = '€'
 
 #@dataclass
-#class IBConfig:
+#class IBConfig: # AppConfig
 #    host: str = '127.0.0.1'
 #    port: int = 7496
 #    client_id: int = 0
@@ -101,6 +103,18 @@ logger = logging.getLogger(__name__)
 #            port=int(os.environ.get('IBKR_PORT', 7496)),
 #            # ... etc
 #        )
+#
+#    @classmethod
+#    def from_args(cls, args) -> 'AppConfig':
+#        cfg = cls()
+#        cfg.verbose = 3 if args.debug else (0 if args.quiet else args.verbose)
+#        cfg.show_year_with_two_digits = bool(args.two_digit_years)
+#        cfg.do_not_show_current_year = bool(args.short_expire_format)
+#        if cfg.do_not_show_current_year:
+#            import datetime
+#            cfg.current_year = datetime.date.today().strftime("%Y")
+#        return cfg
+#config = IBConfig()
 
 #def readConfig(file_path):
 #    import configparser
@@ -216,6 +230,8 @@ def getName(contract: Contract) -> str:
             expiration = expiration[4:]
     return f'{contract.symbol} {contract.right}{getStrike(contract)} {expiration}'
 
+#from functools import lru_cache
+#@lru_cache(maxsize=1024)
 def getDTE(contract: Contract) -> int:
     expiration = contract.lastTradeDateOrContractMonth
     if len(expiration) != 8:
@@ -234,21 +250,14 @@ def showPortfolioDebug(portfolio: list[PortfolioItem]) -> None:
     for p in portfolio:
         print(p)
 
-#def filter_portfolio(portfolio: list[PortfolioItem], account, non_options=False,
-#    future_options=False, options=False, currency_options=False):
-#    for pi in portfolio:
-#        if pi.account != account:
-#            continue
-#        if non_options and isinstance(pi.contract, (FuturesOption, Option)):
-#            continue
-#        # ... etc
-#        yield pi
-
-def addSum(d: dict[str, list[float]], a: float, b: float, curr: str) -> None:
-    if d.get(curr, None) is None:
-        d[curr] = [0.0, 0.0]
-    d[curr][0] += a
-    d[curr][1] += b
+def accumulate_values(d: dict[str, list[float]], values: list[float], currency: str) -> None:
+    """Generic accumulator for currency-keyed dictionaries."""
+    # Check if we need to add a new currency:
+    if d.get(currency) is None:
+        d[currency] = [0.0] * len(values)
+    # Add to all entries for this currency:
+    for i, v in enumerate(values):
+        d[currency][i] += v
 
 def showPortfolio(console: Console, accounts: list[str], portfolio: list[PortfolioItem],
     non_options: bool = False, future_options: bool = False, options: bool = False,
@@ -302,21 +311,15 @@ def showPortfolio(console: Console, accounts: list[str], portfolio: list[Portfol
             pnl = pi.unrealizedPNL
             curr = get_currency_symbol(pi.contract.currency)
             kostenbasis = pi.position * pi.averageCost
-            addSum(summe, kostenbasis, pi.marketValue, curr)
-            guv_prozent = 0.0
-            if kostenbasis != 0.0:
-                guv_prozent = (pnl / abs(kostenbasis)) * 100.0
+            accumulate_values(summe, [kostenbasis, pi.marketValue], curr)
+            guv_prozent = (pnl / abs(kostenbasis) * 100.0) if kostenbasis != 0.0 else 0.0
             name = getName(pi.contract)
+            row = [f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}', f'{guv_prozent:.0f}%',
+                   f'{pi.marketValue:.0f} {curr}', f'{kostenbasis:.0f} {curr}',
+                   f'{pi.marketPrice}', f'{pi.averageCost}']
             if show_options_details:
-                table.add_row(f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}',
-                    f'{guv_prozent:.0f}%', f'{pi.marketValue:.0f} {curr}',
-                    f'{kostenbasis:.0f} {curr}',
-                    f'{pi.marketPrice}', f'{pi.averageCost}', f'{getDTE(pi.contract):.0f}')
-            else:
-                table.add_row(f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}',
-                    f'{guv_prozent:.0f}%', f'{pi.marketValue:.0f} {curr}',
-                    f'{kostenbasis:.0f} {curr}',
-                    f'{pi.marketPrice}', f'{pi.averageCost}')
+                row.append(f'{getDTE(pi.contract):.0f}')
+            table.add_row(*row)
         table.add_section()
         for (curr, values) in summe.items():
             (sum_kostenbasis, sum_marketValue) = values
@@ -324,12 +327,11 @@ def showPortfolio(console: Console, accounts: list[str], portfolio: list[Portfol
             guv_prozent = 0.0
             if sum_kostenbasis != 0.0:
                 guv_prozent = (pnl / abs(sum_kostenbasis)) * 100.0
+            row = ['', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
+                   f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '']
             if show_options_details:
-                table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
-                    f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '', '')
-            else:
-                table.add_row('', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
-                    f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '')
+                row.append('')
+            table.add_row(*row)
         console.print(Panel(table))
 
 def printAccountValues(accountValues: list[AccountValue]) -> None:
@@ -361,6 +363,7 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
             ct = pi.contract
             if pi.account != account or not isinstance(ct, Option):
                 continue
+            # XXX
             #ticker = await ibkr.get_ticker_for_stock(ct.symbol, ct.primaryExchange)
             #marketPrice = ticker.marketPrice()
             marketPrice = 0.0
@@ -376,31 +379,26 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
             print(f'{getPosition(p)} {getName(p.contract)} with price {p.marketPrice:.0f}')
         print()
 
-def addSum1(d: dict[str, float], a: float, curr: str) -> None:
-    if d.get(curr, None) is None:
-        d[curr] = 0.0
-    d[curr] -= a
-
 # XXX Maybe list all individual short puts with their needed cash sum:
 def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
-        sum_sp: dict[str, float] = {}
+        sum_sp: dict[str, list[float]] = {}
         for pi in portfolio:
             ct = pi.contract
             if pi.account != account or not isinstance(ct, Option):
                 continue
             if ct.right == 'P' and pi.position < 0.0:
                 curr = get_currency_symbol(ct.currency)
-                addSum1(sum_sp, ct.strike * pi.position * float(ct.multiplier), curr)
+                accumulate_values(sum_sp, [ct.strike * pi.position * float(ct.multiplier)], curr)
         if not sum_sp:
             continue
         print()
         for (curr, summe) in sum_sp.items():
-            if summe == 0.0:
+            if summe[0] == 0.0:
                 continue
             # XXX Show also needed cash as percentage of all available cash:
             #cash_percent = str(round(sum_sp * 100.0 / all_cash)) + '%'
-            print(f'Cash needed if all short puts get assigned for account {account}: {summe:.0f} {curr}')
+            print(f'Cash needed if all short puts get assigned for account {account}: {-summe[0]:.0f} {curr}')
         print()
 
 async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = None,
@@ -525,6 +523,21 @@ Examples:
         help='Suppress output (opposite of -v)')
     return parser
 
+async def safe_connect(host: str, port: int, client_id: int, readonly: bool, account: str) -> IB:
+    ib = IB()
+    try:
+        await ib.connectAsync(host, port, clientId=client_id, readonly=readonly, account=account)
+    except ConnectionRefusedError as e:
+        logger.error('API connection failed: ConnectionRefusedError: '
+                     'Make sure API port on TWS/IBG is open.')
+        #sys.exit(1)
+        raise SystemExit(1) from e
+    except Exception as e:
+        logger.exception('Unexpected error connecting to IB:')
+        #sys.exit(1)
+        raise SystemExit(1) from e
+    return ib
+
 async def main(argv: list[str]) -> None:
     global verbose, DoNotShowCurrentYear, ShowYearWithTwoDigits, cur_year
 
@@ -562,14 +575,7 @@ async def main(argv: list[str]) -> None:
         ib_async.util.logToConsole(logging.DEBUG)
     #ib_async.util.logToFile('ib.log', logging.WARNING)
 
-    ib = IB()
-    try:
-        await ib.connectAsync(args.host, args.port, clientId=args.client_id,
-                              readonly=args.readonly, account=args.account)
-    except ConnectionRefusedError:
-        logger.error('API connection failed: ConnectionRefusedError: '
-              'Make sure API port on TWS/IBG is open.')
-        sys.exit(1)
+    ib = await safe_connect(args.host, args.port, args.client_id, args.readonly, args.account)
 
     #if ib.isConnected():
     #await asyncio.sleep(1)
