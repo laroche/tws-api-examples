@@ -451,11 +451,12 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     #for trade in orders:
     #    print(f'{trade.contract.symbol}: {trade.order.action} {trade.order.totalQuantity}')
 
-def usage() -> None:
-    print('ib-info.py ' +
-        '[--host=127.0.0.1][--port=7496][--client-id=0][--readonly][--acount=U12345]' +
-        '[--short-expire-format]' +
-        '[--help][--verbose][--debug][--quiet]')
+# XXX not used anymore
+#def usage() -> None:
+#    print('ib-info.py ' +
+#        '[--host=127.0.0.1][--port=7496][--client-id=0][--readonly][--acount=U12345]' +
+#        '[--short-expire-format]' +
+#        '[--help][--verbose][--debug][--quiet]')
 
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
