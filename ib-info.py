@@ -57,6 +57,8 @@
 #
 
 #from dataclasses import dataclass
+from typing import Any, Awaitable, Callable
+from enum import Enum
 import sys
 import os
 import locale
@@ -64,8 +66,7 @@ import logging
 import datetime
 import argparse
 import asyncio
-import ib_async
-from ib_async import IB, FuturesOption, Option, AccountValue, PortfolioItem, Contract
+from ib_async import IB, FuturesOption, Option, AccountValue, PortfolioItem, Contract, Stock, Ticker, Index, util
 
 from rich.console import Console
 from rich.panel import Panel
@@ -87,6 +88,7 @@ CURRENCY_SYMBOLS = {'EUR', 'M6E'}
 logger = logging.getLogger(__name__)
 
 # Turn off some of the more annoying logging output from ib_async
+#import ib_async
 #logging.getLogger('ib_async.ib').setLevel(logging.ERROR)
 #logging.getLogger('ib_async.wrapper').setLevel(logging.CRITICAL)
 
@@ -149,6 +151,182 @@ async def qualify_contracts(ib: IB, *contracts: Contract) -> list[Contract]:
         else:
             qualified.append(r)
     return qualified
+
+async def __market_data_streaming_handler__(ib: IB, contract: Contract, generic_tick_list: str,
+    handler: Callable[[Ticker], Awaitable[Any]]) -> Ticker:
+    """
+    Handles the streaming of market data for a given contract.
+
+    This asynchronous method qualifies the contract, requests market data,
+    and processes the data using the provided handler. Once the handler
+    completes, the market data request is canceled.
+
+    Args:
+        contract (Contract): The contract for which market data is requested.
+        handler (Callable[[Ticker], Awaitable[None]]): An asynchronous function
+            that processes the received market data ticker.
+
+    Returns:
+        Ticker: The market data ticker for the given contract.
+    """
+    if not contract.conId:
+        qualified = await qualify_contracts(ib, contract)
+        if qualified:
+            contract = qualified[0]
+    if not contract.conId:
+        raise ValueError(f"Contract {contract} can't be qualified because no 'conId' value exists.")
+    ticker = ib.reqMktData(contract, genericTickList=generic_tick_list)
+    await handler(ticker)
+    return ticker
+
+api_response_wait_time: int = 60
+default_order_exchange: str = 'SMART'
+
+async def __ticker_wait_for_condition__(
+    ticker: Ticker, condition: Callable[[Ticker], bool], timeout: float
+) -> bool:
+    event = asyncio.Event()
+
+    def onTicker(ticker: Ticker) -> None:
+        if condition(ticker):
+            event.set()
+
+    ticker.updateEvent += onTicker
+    try:
+        await asyncio.wait_for(event.wait(), timeout=timeout)
+        return True
+    except asyncio.TimeoutError:
+        return False
+    finally:
+        ticker.updateEvent -= onTicker
+
+async def __wait_for_midpoint_price__(ticker: Ticker) -> bool:
+    return await __ticker_wait_for_condition__(
+        ticker, lambda t: not util.isNan(t.midpoint()), api_response_wait_time
+    )
+
+async def __wait_for_market_price__(ticker: Ticker) -> bool:
+    return await __ticker_wait_for_condition__(
+        ticker,
+        lambda t: not util.isNan(t.marketPrice()),
+        api_response_wait_time,
+    )
+
+async def __wait_for_greeks__(ticker: Ticker) -> bool:
+    return await __ticker_wait_for_condition__(
+        ticker,
+        lambda t: not (
+            t.modelGreeks is None
+            or t.modelGreeks.delta is None
+            or util.isNan(t.modelGreeks.delta)
+        ),
+        api_response_wait_time,
+    )
+
+async def __wait_for_open_interest__(ticker: Ticker) -> bool:
+    def open_interest_is_not_ready(ticker: Ticker) -> bool:
+        if not ticker.contract:
+            return False
+        if ticker.contract.right.startswith('P'):
+            return util.isNan(ticker.putOpenInterest)
+        else:
+            return util.isNan(ticker.callOpenInterest)
+
+    return await __ticker_wait_for_condition__(
+        ticker,
+        lambda t: not open_interest_is_not_ready(t),
+        api_response_wait_time,
+    )
+
+class RequiredFieldValidationError(Exception):
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(self.message)
+
+class TickerField(Enum):
+    MIDPOINT = 'midpoint'
+    MARKET_PRICE = 'market_price'
+    GREEKS = 'greeks'
+    OPEN_INTEREST = 'open_interest'
+
+def __ticker_field_handler__(ticker_field: TickerField) -> Callable[[Ticker], Awaitable[bool]]:
+    if ticker_field == TickerField.MIDPOINT:
+        return __wait_for_midpoint_price__
+    if ticker_field == TickerField.MARKET_PRICE:
+        return __wait_for_market_price__
+    if ticker_field == TickerField.GREEKS:
+        return __wait_for_greeks__
+    if ticker_field == TickerField.OPEN_INTEREST:
+        return __wait_for_open_interest__
+
+async def get_ticker_for_contract(ib: IB, contract: Contract, generic_tick_list: str = '',
+    required_fields: list[TickerField] = [TickerField.MARKET_PRICE],
+    optional_fields: list[TickerField] = [TickerField.MIDPOINT]) -> Ticker:
+    required_handlers = [
+        (field, __ticker_field_handler__(field)) for field in required_fields
+    ]
+    optional_handlers = [
+        (field, __ticker_field_handler__(field)) for field in optional_fields
+    ]
+
+    async def ticker_handler(ticker: Ticker) -> None:
+        required_tasks = [handler(ticker) for _, handler in required_handlers]
+        optional_tasks = [handler(ticker) for _, handler in optional_handlers]
+
+        # Gather results, allowing optional tasks to potentially fail (timeout)
+        results = await asyncio.gather(
+            asyncio.gather(*required_tasks),
+            asyncio.gather(
+                *optional_tasks, return_exceptions=False
+            ),  # Don't raise exceptions here for optional
+        )
+        required_results = results[0]
+        optional_results = results[1]
+
+        # Check required results
+        failed_required_fields = [
+            field.name
+            for i, (field, _) in enumerate(required_handlers)
+            if not required_results[i]
+        ]
+        if failed_required_fields:
+            raise RequiredFieldValidationError(
+                f"Required fields timed out for {contract.localSymbol}: {', '.join(failed_required_fields)}"
+            )
+
+        # Log warnings for optional results that timed out
+        failed_optional_fields = [
+            field.name
+            for i, (field, _) in enumerate(optional_handlers)
+            if not optional_results[i]
+        ]
+        if failed_optional_fields:
+            logger.warning(
+                f"Optional fields timed out for {contract.localSymbol}: {', '.join(failed_optional_fields)}"
+            )
+
+    return await __market_data_streaming_handler__(ib, contract, generic_tick_list,
+        lambda ticker: ticker_handler(ticker))
+
+async def get_ticker_for_stock(ib: IB, symbol: str, primary_exchange: str,
+    order_exchange: str | None = None, generic_tick_list: str = '',
+    required_fields: list[TickerField] = [TickerField.MARKET_PRICE],
+    optional_fields: list[TickerField] = [TickerField.MIDPOINT]) -> Ticker:
+    stock = Stock(symbol, order_exchange or default_order_exchange,
+        currency='USD', primaryExchange=primary_exchange)
+    qualified = await qualify_contracts(ib, stock)
+    contract: Contract = qualified[0] if qualified else stock
+
+    if not contract.conId:
+        # Some underlyings (e.g. SPX) are indices, not stocks.
+        index_exchange = primary_exchange or 'CBOE'
+        index_contract = Index(symbol, index_exchange, 'USD')
+        qualified_index = await qualify_contracts(ib, index_contract)
+        if qualified_index:
+            contract = qualified_index[0]
+
+    return await get_ticker_for_contract(ib, contract, generic_tick_list,
+        required_fields, optional_fields)
 
 currency_conversion = {
     'EUR': '€',
@@ -358,17 +536,15 @@ def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: in
             print(f'{getPosition(p)} {getName(p.contract)} ({getDTE(p.contract)} DTE)')
         print()
 
-def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
+async def ShowITM(ib: IB, accounts: list[str], portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
         pf = []
         for pi in portfolio:
             ct = pi.contract
             if pi.account != account or not isinstance(ct, Option):
                 continue
-            # XXX
-            #ticker = await ibkr.get_ticker_for_stock(ct.symbol, ct.primaryExchange)
-            #marketPrice = ticker.marketPrice()
-            marketPrice = 0.0
+            ticker = await get_ticker_for_stock(ib, ct.symbol, ct.primaryExchange)
+            marketPrice = ticker.marketPrice()
             if ct.right == 'P' and marketPrice <= ct.strike:
                 pf.append(pi)
             if ct.right == 'C' and marketPrice >= ct.strike:
@@ -431,7 +607,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     showPortfolio(console, accounts, portfolio, options=True)
     ShowLessThanDTE(accounts, portfolio, 21)
     ShowLessThanDTE(accounts, portfolio, 2)
-    #ShowITM(accounts, portfolio)
+    #await ShowITM(ib, accounts, portfolio)
     ShowNotionalValue(accounts, portfolio)
     showPortfolio(console, accounts, portfolio, currency_options=True)
 
@@ -563,17 +739,17 @@ async def main(argv: list[str]) -> None:
 
     #config = readConfig('ib-info.ini')
 
-    ib_async.util.allowCtrlC()
+    util.allowCtrlC()
 
     if verbose == 0:
-        ib_async.util.logToConsole(logging.ERROR)
+        util.logToConsole(logging.ERROR)
     elif verbose == 1:
-        ib_async.util.logToConsole(logging.WARNING)
+        util.logToConsole(logging.WARNING)
     elif verbose == 2:
-        ib_async.util.logToConsole(logging.INFO)
+        util.logToConsole(logging.INFO)
     elif verbose >= 3:
-        ib_async.util.logToConsole(logging.DEBUG)
-    #ib_async.util.logToFile('ib.log', logging.WARNING)
+        util.logToConsole(logging.DEBUG)
+    #util.logToFile('ib.log', logging.WARNING)
 
     ib = await safe_connect(args.host, args.port, args.client_id, args.readonly, args.account)
 
@@ -586,17 +762,17 @@ async def main(argv: list[str]) -> None:
 
     console = Console()
 
+    # 1 == realtime with subscriptions
+    # 3 == delayed
+    # 4 == delayed frozen
+    #ib.reqMarketDataType(3)
+
     await showAccounts(ib, console)
 
     #tasks = []
     #for symbol in symbols:
     #    tasks.append(fetch_data(ib, symbol))
     ##await asyncio.gather(*tasks)
-
-    # ib.reqMarketDataType(self.config['account']['market_data_type'])
-    # 3 == delayed
-    # 4 == delayed frozen
-    # 1 == realtime with subscriptions
 
     #option = Option('EOE', '20171215', 490, 'P', 'FTA', multiplier=100)
     #calc = ib.calculateImpliedVolatility(option, optionPrice=6.1, underPrice=525)
