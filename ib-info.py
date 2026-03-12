@@ -111,7 +111,7 @@ logger = logging.getLogger(__name__)
 #        cfg.do_not_show_current_year = bool(args.short_expire_format)
 #        if cfg.do_not_show_current_year:
 #            import datetime
-#            cfg.current_year = datetime.date.today().strftime("%Y")
+#            cfg.current_year = datetime.date.today().strftime('%Y')
 #        return cfg
 #config = IBConfig()
 
@@ -231,10 +231,10 @@ def getDTE(contract: Contract) -> int:
     if len(expiration) != 8:
         # XXX Does this happen? Should we then find the date of
         # the monthly expiration as extra search?
-        #dte = datetime.datetime.strptime(expiration, "%Y%m")
+        #dte = datetime.datetime.strptime(expiration, '%Y%m')
         logger.error('Wrong expiration date: %s (length != 8).', expiration)
         raise ValueError(f'Expiration date ({expiration}) has not length of 8.')
-    d = datetime.datetime.strptime(expiration, "%Y%m%d")
+    d = datetime.datetime.strptime(expiration, '%Y%m%d')
     dte = d.date() - datetime.date.today()
     return dte.days
 
@@ -545,7 +545,7 @@ async def main(argv: list[str]) -> None:
     DoNotShowCurrentYear = args.short_expire_format
     if DoNotShowCurrentYear:
         today = datetime.date.today()
-        cur_year = today.strftime("%Y") # today.year
+        cur_year = today.strftime('%Y') # today.year
     if args.debug:
         verbose = 3
     elif args.quiet:
