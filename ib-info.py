@@ -15,6 +15,15 @@
 # ~/Jts/tws.vmoptions:
 # -Xmx4096m
 #
+# Use one of the following ports:
+# - port 7496: TWS active/real/live account
+# - port 7497: TWS paper account (demo/test)
+# - port 4001: IB Gateway (IBG) active/real/live account
+# - port 4002: IB Gateway (IBG) paper account (demo/test)
+# The client id must be unique per connection/client:
+# - client_id 0 is getting all transactions, including also TWS.
+# - client_id 1 (configurable) is getting transactions from other client_ids, but not TWS.
+#
 # TODO:
 # - Make this also a web application.
 # - Translate all prices into Euro as an option.
@@ -31,6 +40,7 @@
 #   - list all short options with delta > 40 that should get rolled
 #     - calculate the best delta for rolling options by looking at current prices
 #   - list all short call options not covered by stock
+#   - list weighted average strike price for Put/Call Short Options per underlying
 #   - grouping of complex (future) options
 #   - getDTE() output should get cached
 # - summary per contract type and underlying
@@ -374,14 +384,15 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
 # XXX Maybe list all individual short puts with their needed cash sum:
 def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
-        sum_sp: dict[str, list[float]] = {}
+        sum_sp: dict[str, list[float]] = {} # sum of all short puts if assigned
         for pi in portfolio:
             ct = pi.contract
             if pi.account != account or not isinstance(ct, Option):
                 continue
-            if ct.right == 'P' and pi.position < 0.0:
-                curr = get_currency_symbol(ct.currency)
-                accumulate_values(sum_sp, [ct.strike * pi.position * float(ct.multiplier)], curr)
+            if ct.right != 'P' or pi.position >= 0.0: # not short put
+                continue
+            curr = get_currency_symbol(ct.currency)
+            accumulate_values(sum_sp, [ct.strike * pi.position * float(ct.multiplier)], curr)
         if not sum_sp:
             continue
         print()
@@ -389,7 +400,7 @@ def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> No
             if summe[0] == 0.0:
                 continue
             # XXX Show also needed cash as percentage of all available cash:
-            #cash_percent = str(round(sum_sp * 100.0 / all_cash)) + '%'
+            #cash_percent = str(round(-summe[0] * 100.0 / all_cash)) + '%'
             print(f'Cash needed if all short puts get assigned for account {account}: {-summe[0]:.0f} {curr}')
         print()
 
@@ -408,7 +419,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
 
     portfolio = ib.portfolio()
     if not portfolio:
-        # XXX allow empty portfolio?
+        # XXX allow empty portfolio? Check with paper trading...
         logger.error('Could not read portfolio.')
         return
     if verbose >= 3:
@@ -451,46 +462,42 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     #for trade in orders:
     #    print(f'{trade.contract.symbol}: {trade.order.action} {trade.order.totalQuantity}')
 
-# XXX not used anymore
-#def usage() -> None:
-#    print('ib-info.py ' +
-#        '[--host=127.0.0.1][--port=7496][--client-id=0][--readonly][--acount=U12345]' +
-#        '[--short-expire-format]' +
-#        '[--help][--verbose][--debug][--quiet]')
-
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description='Display IBKR portfolio information',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
+Use one of the following ports:
+- port 7496: TWS active/real/live account
+- port 7497: TWS paper account (demo/test)
+- port 4001: IB Gateway (IBG) active/real/live account
+- port 4002: IB Gateway (IBG) paper account (demo/test)
+
+The client id must be unique per connection/client:
+- client_id 0 is getting all transactions, including also TWS.
+- client_id 1 (configurable) is getting transactions from other client_ids, but not TWS.
+
 Examples:
-  python ib-info.py --host 127.0.0.1 --port 7496 -v
-  python ib-info.py --account U12345 --readonly
-  python ib-info.py --debug --short-expire-format
+  python ib-info.py --host 127.0.0.1 --port 7496 --short-expire-format
+  python ib-info.py --host 127.0.0.1 --port 7496 --account=U12345
+  python ib-info.py --host 127.0.0.1 --port 7496 --debug
         ''')
     # Connection parameters
     parser.add_argument('--host',
         default=os.environ.get('IBKR_HOST', '127.0.0.1'),
         help='TWS/IB-Gateway host (default: %(default)s)')
-    parser.add_argument('-p', '--port',
+    parser.add_argument('--port', '-p',
         type=int,
         default=int(os.environ.get('IBKR_PORT', 7496)),
         help='TWS/IB-Gateway port (default: %(default)s)')
-    #port 7497: TWS paper account (demo/test)
-    #port 7496: TWS active/real/live account
-    #port 4002: IB Gateway (IBG) paper account (demo/test)
-    #port 4001: IB Gateway (IBG) active/real/live account
-    parser.add_argument('-i', '--client-id',
+    parser.add_argument('--client-id', '-i',
         type=int,
         default=int(os.environ.get('IBKR_CLIENT_ID', 0)),
         help='Client-ID for connection (default: %(default)s)')
-    # client_id must be unique per connection
-    # client_id 0 is getting all transactions, including also TWS.
-    # client_id 1 (configurable) is getting transactions from other client_ids, but not TWS.
-    parser.add_argument('-a', '--account',
+    parser.add_argument('--account', '-a',
         default=os.environ.get('IBKR_ACCOUNT', ''),
         help='Limit to specific account (default: all managed accounts)')
-    parser.add_argument('-r', '--readonly',
+    parser.add_argument('--readonly', '-r',
         action='store_true',
         help='Read-only mode (default: False)')
     # Output formatting
