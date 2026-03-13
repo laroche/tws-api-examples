@@ -57,7 +57,7 @@
 #
 
 #from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Tuple
 from enum import Enum
 import sys
 import os
@@ -182,9 +182,8 @@ async def __market_data_streaming_handler__(ib: IB, contract: Contract, generic_
 api_response_wait_time: int = 60
 default_order_exchange: str = 'SMART'
 
-async def __ticker_wait_for_condition__(
-    ticker: Ticker, condition: Callable[[Ticker], bool], timeout: float
-) -> bool:
+async def __ticker_wait_for_condition__(ticker: Ticker, condition: Callable[[Ticker], bool],
+                                        timeout: float) -> bool:
     event = asyncio.Event()
 
     def onTicker(ticker: Ticker) -> None:
@@ -201,27 +200,17 @@ async def __ticker_wait_for_condition__(
         ticker.updateEvent -= onTicker
 
 async def __wait_for_midpoint_price__(ticker: Ticker) -> bool:
-    return await __ticker_wait_for_condition__(
-        ticker, lambda t: not util.isNan(t.midpoint()), api_response_wait_time
-    )
+    return await __ticker_wait_for_condition__(ticker, lambda t: not util.isNan(t.midpoint()),
+        api_response_wait_time)
 
 async def __wait_for_market_price__(ticker: Ticker) -> bool:
-    return await __ticker_wait_for_condition__(
-        ticker,
-        lambda t: not util.isNan(t.marketPrice()),
-        api_response_wait_time,
-    )
+    return await __ticker_wait_for_condition__(ticker, lambda t: not util.isNan(t.marketPrice()),
+        api_response_wait_time)
 
 async def __wait_for_greeks__(ticker: Ticker) -> bool:
-    return await __ticker_wait_for_condition__(
-        ticker,
-        lambda t: not (
-            t.modelGreeks is None
-            or t.modelGreeks.delta is None
-            or util.isNan(t.modelGreeks.delta)
-        ),
-        api_response_wait_time,
-    )
+    return await __ticker_wait_for_condition__(ticker,
+        lambda t: not (t.modelGreeks is None or t.modelGreeks.delta is None or
+        util.isNan(t.modelGreeks.delta)), api_response_wait_time)
 
 async def __wait_for_open_interest__(ticker: Ticker) -> bool:
     def open_interest_is_not_ready(ticker: Ticker) -> bool:
@@ -232,11 +221,8 @@ async def __wait_for_open_interest__(ticker: Ticker) -> bool:
         else:
             return util.isNan(ticker.callOpenInterest)
 
-    return await __ticker_wait_for_condition__(
-        ticker,
-        lambda t: not open_interest_is_not_ready(t),
-        api_response_wait_time,
-    )
+    return await __ticker_wait_for_condition__(ticker, lambda t: not open_interest_is_not_ready(t),
+        api_response_wait_time)
 
 class RequiredFieldValidationError(Exception):
     def __init__(self, message: str) -> None:
@@ -426,6 +412,18 @@ def getDTE(contract: Contract) -> int:
     dte = d.date() - datetime.date.today()
     return dte.days
 
+def getThetaDTE(pi: PortfolioItem) -> Tuple[float, int]:
+    ct = pi.contract
+    dte = getDTE(ct)
+    value = pi.marketValue
+    # XXX subtract intrinsic value from value:
+    #if ct.right == 'P' and underlying_value < ct.strike:
+    #    value += ct.strike - underlying_value
+    #if ct.right == 'C' and underlying_value > ct.strike:
+    #    value += underlying_value - ct.strike
+    theta = value / (dte + 1) if dte >= 0 else 0.0
+    return (theta, dte)
+
 def showPortfolioDebug(portfolio: list[PortfolioItem]) -> None:
     print()
     print('Portfolio:')
@@ -487,30 +485,33 @@ def showPortfolio(console: Console, accounts: list[str], portfolio: list[Portfol
         table.add_column('Durchschnittskurs', justify='right')
         if show_options_details:
             table.add_column('DTE', justify='right')
+            table.add_column('Daily Theta', justify='right')
             #table.add_column('Kurs vom Basiswert', justify='right')
         summe: dict[str, list[float]] = {}
         for pi in pf:
             pnl = pi.unrealizedPNL
             curr = get_currency_symbol(pi.contract.currency)
             kostenbasis = pi.position * pi.averageCost
-            accumulate_values(summe, [kostenbasis, pi.marketValue], curr)
             guv_prozent = (pnl / abs(kostenbasis) * 100.0) if kostenbasis != 0.0 else 0.0
             name = getName(pi.contract)
             row = [f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}', f'{guv_prozent:.0f}%',
                    f'{pi.marketValue:.0f} {curr}', f'{kostenbasis:.0f} {curr}',
                    f'{pi.marketPrice}', f'{pi.averageCost}']
+            theta = 0.0
             if show_options_details:
-                row.append(f'{getDTE(pi.contract):.0f}')
+                (theta, dte) = getThetaDTE(pi)
+                row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}'])
+            accumulate_values(summe, [kostenbasis, pi.marketValue, theta], curr)
             table.add_row(*row)
         table.add_section()
         for (curr, values) in summe.items():
-            (sum_kostenbasis, sum_marketValue) = values
+            (sum_kostenbasis, sum_marketValue, sum_theta) = values
             pnl = sum_marketValue - sum_kostenbasis
             guv_prozent = (pnl / abs(sum_kostenbasis)) * 100.0 if sum_kostenbasis != 0.0 else 0.0
             row = ['', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
                    f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '']
             if show_options_details:
-                row.append('')
+                row.extend(['', f'{sum_theta:.2f} {curr}'])
             table.add_row(*row)
         console.print(Panel(table))
 
