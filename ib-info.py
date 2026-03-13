@@ -57,7 +57,7 @@
 #
 
 #from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Tuple
+from typing import Any, Awaitable, Callable
 from enum import Enum
 import sys
 import os
@@ -412,7 +412,7 @@ def getDTE(contract: Contract) -> int:
     dte = d.date() - datetime.date.today()
     return dte.days
 
-def getThetaDTE(pi: PortfolioItem) -> Tuple[float, int]:
+def getThetaDTE(pi: PortfolioItem) -> tuple[float, int]:
     ct = pi.contract
     dte = getDTE(ct)
     value = pi.marketValue
