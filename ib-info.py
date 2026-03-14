@@ -66,7 +66,7 @@ import logging
 import datetime
 import argparse
 import asyncio
-from ib_async import IB, FuturesOption, Option, AccountValue, PortfolioItem, Contract, Stock, Ticker, Index, util
+from ib_async import IB, FuturesOption, Option, AccountValue, PortfolioItem, Contract, Stock, Ticker, Index, Forex, util
 
 from rich.console import Console
 from rich.panel import Panel
@@ -91,6 +91,8 @@ logger = logging.getLogger(__name__)
 #import ib_async
 #logging.getLogger('ib_async.ib').setLevel(logging.ERROR)
 #logging.getLogger('ib_async.wrapper').setLevel(logging.CRITICAL)
+
+UseMarketDataSubscription: bool = False
 
 # XXX How to detect base currency?
 #BASE = '€'
@@ -180,7 +182,8 @@ async def __market_data_streaming_handler__(ib: IB, contract: Contract, generic_
     return ticker
 
 api_response_wait_time: int = 60
-default_order_exchange: str = 'SMART'
+#default_order_exchange: str = 'SMART'
+default_order_exchange: str = 'AMEX'
 
 async def __ticker_wait_for_condition__(ticker: Ticker, condition: Callable[[Ticker], bool],
                                         timeout: float) -> bool:
@@ -398,6 +401,16 @@ def getName(contract: Contract) -> str:
             expiration = expiration[4:]
     return f'{contract.symbol} {contract.right}{getStrike(contract)} {expiration}'
 
+async def getStockMarketPrice(portfolio: list[PortfolioItem], symbol: str, ib: IB) -> float | None:
+    for pi in portfolio:
+        if isinstance(pi.contract, Stock) and pi.contract.localSymbol == symbol:
+            return pi.marketPrice
+    if not UseMarketDataSubscription:
+        return None
+    #ticker = await get_ticker_for_stock(ib, symbol, primaryExchange)
+    ticker = await get_ticker_for_stock(ib, symbol, 'AMEX', 'AMEX') # XXX
+    return ticker.marketPrice()
+
 #from functools import lru_cache
 #@lru_cache(maxsize=1024)
 def getDTE(contract: Contract) -> int:
@@ -544,18 +557,20 @@ async def ShowITM(ib: IB, accounts: list[str], portfolio: list[PortfolioItem]) -
             ct = pi.contract
             if pi.account != account or not isinstance(ct, Option):
                 continue
-            ticker = await get_ticker_for_stock(ib, ct.symbol, ct.primaryExchange)
-            marketPrice = ticker.marketPrice()
+            marketPrice = await getStockMarketPrice(portfolio, ct.symbol, ib)
+            if marketPrice is None:
+                continue
             if ct.right == 'P' and marketPrice <= ct.strike:
-                pf.append(pi)
+                pf.append((pi, marketPrice))
             if ct.right == 'C' and marketPrice >= ct.strike:
-                pf.append(pi)
+                pf.append((pi, marketPrice))
         if not pf:
             continue
         print()
         print(f'List all In The Money (ITM) options for account {account}:')
-        for p in pf:
-            print(f'{getPosition(p)} {getName(p.contract)} with price {p.marketPrice:.0f}')
+        for (p, marketPrice) in pf:
+            curr = get_currency_symbol(p.contract.currency)
+            print(f'{getPosition(p)} {getName(p.contract)} with price {marketPrice:.2f} {curr}')
         print()
 
 # XXX Maybe list all individual short puts with their needed cash sum:
@@ -608,7 +623,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     showPortfolio(console, accounts, portfolio, options=True)
     ShowLessThanDTE(accounts, portfolio, 21)
     ShowLessThanDTE(accounts, portfolio, 2)
-    #await ShowITM(ib, accounts, portfolio)
+    await ShowITM(ib, accounts, portfolio)
     ShowNotionalValue(accounts, portfolio)
     showPortfolio(console, accounts, portfolio, currency_options=True)
 
@@ -766,7 +781,7 @@ async def main(argv: list[str]) -> None:
     # 1 == realtime with subscriptions
     # 3 == delayed
     # 4 == delayed frozen
-    #ib.reqMarketDataType(3)
+    ib.reqMarketDataType(4)
 
     await showAccounts(ib, console)
 
@@ -781,11 +796,48 @@ async def main(argv: list[str]) -> None:
     #calc = ib.calculateOptionPrice(option, volatility=0.14, underPrice=525)
     #print(calc)
 
-    #spx = Index('SPX', 'CBOE')
-    #ib.qualifyContracts(spx)
     #ib.reqMarketDataType(4)
-    #[ticker] = ib.reqTickers(spx)
+    #spx = Stock('IBIT', 'SMART', currency='USD')
+    #spx = Stock('IBIT', 'AMEX', currency='USD')
+    #spx = Stock('IBIT', 'AMEX', currency='USD', primaryExchange='AMEX')
+    #await ib.qualifyContractsAsync(spx)
+    #ib.reqMktData(spx, "", False, False)
+    #ticker = ib.ticker(spx)
+    #print(ticker)
+    #await asyncio.sleep(2)
+    #print(ticker)
+    #print(ticker.marketPrice())
+
+    #ib.reqMarketDataType(4)
+    #spx = Index('SPX', 'CBOE')
+    #await ib.qualifyContractsAsync(spx)
+    #ib.reqMktData(spx, "", False, False)
+    #ticker = ib.ticker(spx)
+    #print(ticker)
+    #await asyncio.sleep(2)
+    #print(ticker)
+    #print(ticker.marketPrice())
+
+    #[ticker] = await ib.reqTickersAsync(spx)
     #spxValue = ticker.marketPrice()
+    #await asyncio.sleep(2)
+    #print(spxValue)
+    #print(ticker.marketPrice())
+
+    #contracts = [
+    #    Forex(pair) for pair in ("EURUSD", "USDJPY", "GBPUSD", "USDCHF", "USDCAD", "AUDUSD")
+    #]
+    #await ib.qualifyContractsAsync(*contracts)
+    #eurusd = contracts[0]
+    #for contract in contracts:
+    #    ib.reqMktData(contract, "", False, False)
+    #ticker = ib.ticker(eurusd)
+    #print(ticker.marketPrice())
+    #print(ticker)
+    #await asyncio.sleep(2)
+    #print(ticker)
+    #print(ticker.marketPrice())
+
     #chains = ib.reqSecDefOptParams(spx.symbol, '', spx.secType, spx.conId)
     #util.df(chains)
     #chain = next(c for c in chains if c.tradingClass == 'SPX' and c.exchange == 'SMART')
