@@ -435,11 +435,11 @@ def getDTE(contract: Contract) -> int:
     dte = d.date() - datetime.date.today()
     return dte.days
 
-def getThetaDTE(pi: PortfolioItem) -> tuple[float, int]:
+async def getThetaDTE(pi: PortfolioItem, ib: IB) -> tuple[float, int]:
     ct = pi.contract
     dte = getDTE(ct)
     value = pi.marketValue
-    underlying_price = MarketPrices.get(ct.symbol)
+    underlying_price = await getStockMarketPrice(ct.symbol, ib)
     if underlying_price is not None:
         # subtract intrinsic value
         if ct.right == 'P' and underlying_price < ct.strike:
@@ -464,7 +464,7 @@ def accumulate_values(d: dict[str, list[float]], values: list[float], currency: 
     for i, v in enumerate(values):
         d[currency][i] += v
 
-def showPortfolio(console: Console, accounts: list[str], portfolio: list[PortfolioItem],
+async def showPortfolio(ib: IB, console: Console, accounts: list[str], portfolio: list[PortfolioItem],
     non_options: bool = False, future_options: bool = False, options: bool = False,
     currency_options: bool = False) -> None:
     for account in accounts:
@@ -524,7 +524,7 @@ def showPortfolio(console: Console, accounts: list[str], portfolio: list[Portfol
                    f'{pi.marketPrice}', f'{pi.averageCost}']
             theta = 0.0
             if show_options_details:
-                (theta, dte) = getThetaDTE(pi)
+                (theta, dte) = await getThetaDTE(pi, ib)
                 row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}'])
             accumulate_values(summe, [kostenbasis, pi.marketValue, theta], curr)
             table.add_row(*row)
@@ -630,15 +630,15 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
         showPortfolioDebug(portfolio)
 
     collectStockMarketPrices(portfolio)
-    showPortfolio(console, accounts, portfolio)
-    showPortfolio(console, accounts, portfolio, non_options=True)
-    showPortfolio(console, accounts, portfolio, future_options=True)
-    showPortfolio(console, accounts, portfolio, options=True)
+    await showPortfolio(ib, console, accounts, portfolio)
+    await showPortfolio(ib, console, accounts, portfolio, non_options=True)
+    await showPortfolio(ib, console, accounts, portfolio, future_options=True)
+    await showPortfolio(ib, console, accounts, portfolio, options=True)
     ShowLessThanDTE(accounts, portfolio, 21)
     ShowLessThanDTE(accounts, portfolio, 2)
     await ShowITM(ib, accounts, portfolio)
     ShowNotionalValue(accounts, portfolio)
-    showPortfolio(console, accounts, portfolio, currency_options=True)
+    await showPortfolio(ib, console, accounts, portfolio, currency_options=True)
 
     # Less information compared to showPortfolio():
     if verbose >= 3:
