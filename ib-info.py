@@ -69,7 +69,8 @@ import logging
 import datetime
 import argparse
 import asyncio
-from ib_async import IB, FuturesOption, Option, AccountValue, PortfolioItem, Contract, Stock, Ticker, Index, Forex, util
+from ib_async import (IB, FuturesOption, Option, AccountValue, PortfolioItem, Contract,
+    Stock, Ticker, Index, Forex, util)
 
 from rich.console import Console
 from rich.panel import Panel
@@ -423,7 +424,8 @@ async def getStockMarketPrice(symbol: str, ib: IB) -> float | None:
     if MarketPrice is not None:
         return MarketPrice
     if not UseMarketDataSubscription:
-        warn_once(logger, f'Not getting market price for {symbol}.')
+        warn_once(logger,
+            f'Not getting market price for {symbol}. ITM/theta calculations might be wrong.')
         return None
     # XXX cache this value for faster lookup as well:
     #ticker = await get_ticker_for_stock(ib, symbol, primaryExchange)
@@ -472,9 +474,9 @@ def accumulate_values(d: dict[str, list[float]], values: list[float], currency: 
     for i, v in enumerate(values):
         d[currency][i] += v
 
-async def showPortfolio(ib: IB, console: Console, accounts: list[str], portfolio: list[PortfolioItem],
-    non_options: bool = False, future_options: bool = False, options: bool = False,
-    currency_options: bool = False) -> None:
+async def showPortfolio(ib: IB, console: Console, accounts: list[str],
+    portfolio: list[PortfolioItem], non_options: bool = False, future_options: bool = False,
+    options: bool = False, currency_options: bool = False) -> None:
     for account in accounts:
         pf = []
         for pi in portfolio:
@@ -629,6 +631,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
         accountValues = ib.accountValues()
         printAccountValues(accountValues)
 
+    # To refresh use: reqAccountUpdatesAsync()
     portfolio = ib.portfolio()
     if not portfolio:
         # XXX allow empty portfolio? Check with paper trading...
