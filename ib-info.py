@@ -378,6 +378,15 @@ def showAccountSummary(console: Console, accounts: list[str],
         table.add_row(f'{account}', f'{nav}', f'{margin}', f'{cash} ({cash_percent})')
     console.print(Panel(table))
 
+MarketPrices: dict[str, float] = {}
+
+def collectStockMarketPrices(portfolio: list[PortfolioItem]) -> None:
+    for pi in portfolio:
+        # XXX Future Prices should also get added
+        if isinstance(pi.contract, Stock):
+            # XXX check if differnet values exist?
+            MarketPrices[pi.contract.localSymbol] = pi.marketPrice
+
 def strip_decimal_zero(value: str) -> str:
     return value[:-2] if value.endswith('.0') else value
 
@@ -401,12 +410,13 @@ def getName(contract: Contract) -> str:
             expiration = expiration[4:]
     return f'{contract.symbol} {contract.right}{getStrike(contract)} {expiration}'
 
-async def getStockMarketPrice(portfolio: list[PortfolioItem], symbol: str, ib: IB) -> float | None:
-    for pi in portfolio:
-        if isinstance(pi.contract, Stock) and pi.contract.localSymbol == symbol:
-            return pi.marketPrice
+async def getStockMarketPrice(symbol: str, ib: IB) -> float | None:
+    MarketPrice = MarketPrices.get(symbol)
+    if MarketPrice is not None:
+        return MarketPrice
     if not UseMarketDataSubscription:
         return None
+    # XXX cache this value for faster lookup as well:
     #ticker = await get_ticker_for_stock(ib, symbol, primaryExchange)
     ticker = await get_ticker_for_stock(ib, symbol, 'AMEX', 'AMEX') # XXX
     return ticker.marketPrice()
@@ -429,11 +439,13 @@ def getThetaDTE(pi: PortfolioItem) -> tuple[float, int]:
     ct = pi.contract
     dte = getDTE(ct)
     value = pi.marketValue
-    # XXX subtract intrinsic value from value:
-    #if ct.right == 'P' and underlying_value < ct.strike:
-    #    value += ct.strike - underlying_value
-    #if ct.right == 'C' and underlying_value > ct.strike:
-    #    value += underlying_value - ct.strike
+    underlying_price = MarketPrices.get(ct.symbol)
+    if underlying_price is not None:
+        # subtract intrinsic value
+        if ct.right == 'P' and underlying_price < ct.strike:
+            value -= (ct.strike - underlying_price) * float(ct.multiplier) * pi.position
+        if ct.right == 'C' and underlying_price > ct.strike:
+            value -= (underlying_price - ct.strike) * float(ct.multiplier) * pi.position
     theta = value / (dte + 1) if dte >= 0 else 0.0
     return (theta, dte)
 
@@ -557,7 +569,7 @@ async def ShowITM(ib: IB, accounts: list[str], portfolio: list[PortfolioItem]) -
             ct = pi.contract
             if pi.account != account or not isinstance(ct, Option):
                 continue
-            marketPrice = await getStockMarketPrice(portfolio, ct.symbol, ib)
+            marketPrice = await getStockMarketPrice(ct.symbol, ib)
             if marketPrice is None:
                 continue
             if ct.right == 'P' and marketPrice <= ct.strike:
@@ -617,6 +629,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     if verbose >= 3:
         showPortfolioDebug(portfolio)
 
+    collectStockMarketPrices(portfolio)
     showPortfolio(console, accounts, portfolio)
     showPortfolio(console, accounts, portfolio, non_options=True)
     showPortfolio(console, accounts, portfolio, future_options=True)
