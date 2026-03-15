@@ -43,6 +43,7 @@
 #   - list weighted average strike price for Put/Call Short Options per underlying
 #   - grouping of complex (future) options
 #   - getDTE() output should get cached
+#   - summary by underlying or expiration date
 # - summary per contract type and underlying
 # - overview pages markets
 # - allow different sorting strategies for overview pages
@@ -52,12 +53,14 @@
 # - Add automatic trading.
 # - If TWS is suspended, this script times out without any real timeout.
 # - How to allow for re-connects?
+# - Should disconnect be done within a finally clause in case of errors?
 #
 # pylint: disable=W0511,R0912,C0103,C0114,C0115,C0116
 #
 
 #from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
+from functools import lru_cache
 from enum import Enum
 import sys
 import os
@@ -86,6 +89,11 @@ DoNotShowCurrentYear: bool = False
 CURRENCY_SYMBOLS = {'EUR', 'M6E'}
 
 logger = logging.getLogger(__name__)
+
+# Keep track of 30 different messages and then warn again
+@lru_cache(30)
+def warn_once(mylogger: logging.Logger, msg: str) -> None:
+    mylogger.warning(msg)
 
 # Turn off some of the more annoying logging output from ib_async
 #import ib_async
@@ -415,13 +423,13 @@ async def getStockMarketPrice(symbol: str, ib: IB) -> float | None:
     if MarketPrice is not None:
         return MarketPrice
     if not UseMarketDataSubscription:
+        warn_once(logger, f'Not getting market price for {symbol}.')
         return None
     # XXX cache this value for faster lookup as well:
     #ticker = await get_ticker_for_stock(ib, symbol, primaryExchange)
     ticker = await get_ticker_for_stock(ib, symbol, 'AMEX', 'AMEX') # XXX
     return ticker.marketPrice()
 
-#from functools import lru_cache
 #@lru_cache(maxsize=1024)
 def getDTE(contract: Contract) -> int:
     expiration = contract.lastTradeDateOrContractMonth
@@ -842,6 +850,7 @@ async def main(argv: list[str]) -> None:
     #]
     #await ib.qualifyContractsAsync(*contracts)
     #eurusd = contracts[0]
+    #ib.reqContractDetails(eurusd)
     #for contract in contracts:
     #    ib.reqMktData(contract, "", False, False)
     #ticker = ib.ticker(eurusd)
@@ -870,6 +879,8 @@ async def main(argv: list[str]) -> None:
     #tickers = ib.reqTickers(*contracts)
     #contracts = ib.qualifyContracts(*contracts)
     #len(contracts)
+
+    # ticker.askGreeks ticker.bidGreeks ticker.lastGreeks ticker.modelGreeks
 
     ib.disconnect()
 
