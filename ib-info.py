@@ -393,8 +393,21 @@ def collectStockMarketPrices(portfolio: list[PortfolioItem]) -> None:
     for pi in portfolio:
         # XXX Future Prices should also get added
         if isinstance(pi.contract, Stock):
-            # XXX check if differnet values exist?
+            # XXX check if different values exist?
             MarketPrices[pi.contract.localSymbol] = pi.marketPrice
+
+async def getStockMarketPrice(symbol: str, ib: IB) -> float | None:
+    MarketPrice = MarketPrices.get(symbol)
+    if MarketPrice is not None:
+        return MarketPrice
+    if not UseMarketDataSubscription:
+        warn_once(logger,
+            f'Not getting market price for {symbol}. ITM/theta calculations might be wrong.')
+        return None
+    # XXX cache this value for faster lookup as well:
+    #ticker = await get_ticker_for_stock(ib, symbol, primaryExchange)
+    ticker = await get_ticker_for_stock(ib, symbol, 'AMEX', 'AMEX') # XXX
+    return ticker.marketPrice()
 
 def strip_decimal_zero(value: str) -> str:
     return value[:-2] if value.endswith('.0') else value
@@ -418,19 +431,6 @@ def getName(contract: Contract) -> str:
         if cur_year == expiration[:4]:
             expiration = expiration[4:]
     return f'{contract.symbol} {contract.right}{getStrike(contract)} {expiration}'
-
-async def getStockMarketPrice(symbol: str, ib: IB) -> float | None:
-    MarketPrice = MarketPrices.get(symbol)
-    if MarketPrice is not None:
-        return MarketPrice
-    if not UseMarketDataSubscription:
-        warn_once(logger,
-            f'Not getting market price for {symbol}. ITM/theta calculations might be wrong.')
-        return None
-    # XXX cache this value for faster lookup as well:
-    #ticker = await get_ticker_for_stock(ib, symbol, primaryExchange)
-    ticker = await get_ticker_for_stock(ib, symbol, 'AMEX', 'AMEX') # XXX
-    return ticker.marketPrice()
 
 #@lru_cache(maxsize=1024)
 def getDTE(contract: Contract) -> int:
@@ -468,11 +468,22 @@ def showPortfolioDebug(portfolio: list[PortfolioItem]) -> None:
 def accumulate_values(d: dict[str, list[float]], values: list[float], currency: str) -> None:
     """Generic accumulator for currency-keyed dictionaries."""
     # Check if we need to add a new currency:
-    if d.get(currency) is None:
+    if currency not in d:
         d[currency] = [0.0] * len(values)
     # Add to all entries for this currency:
     for i, v in enumerate(values):
         d[currency][i] += v
+
+def add_summary(name: str, values: list[float], curr: str, show_options_details: bool,
+    table: Table) -> None:
+    (sum_kostenbasis, sum_marketValue, sum_theta) = values
+    pnl = sum_marketValue - sum_kostenbasis
+    guv_prozent = (pnl / abs(sum_kostenbasis)) * 100.0 if sum_kostenbasis != 0.0 else 0.0
+    row = ['', name, f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
+           f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '']
+    if show_options_details:
+        row.extend(['', f'{sum_theta:.2f} {curr}'])
+    table.add_row(*row)
 
 async def showPortfolio(ib: IB, console: Console, accounts: list[str],
     portfolio: list[PortfolioItem], non_options: bool = False, future_options: bool = False,
@@ -523,6 +534,9 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             table.add_column('Daily Theta', justify='right')
             #table.add_column('Kurs vom Basiswert', justify='right')
         summe: dict[str, list[float]] = {}
+        if show_options_details:
+            summe_undl: dict[str, dict[str, list[float]]] = {}
+            summe_exp: dict[str, dict[str, list[float]]] = {}
         for pi in pf:
             pnl = pi.unrealizedPNL
             curr = get_currency_symbol(pi.contract.currency)
@@ -534,20 +548,32 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                    f'{pi.marketPrice}', f'{pi.averageCost}']
             theta = 0.0
             if show_options_details:
+                ct = pi.contract
                 (theta, dte) = await getThetaDTE(pi, ib)
                 row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}'])
+                if ct.symbol not in summe_undl:
+                    summe_undl[ct.symbol] = {}
+                accumulate_values(summe_undl[ct.symbol],
+                    [kostenbasis, pi.marketValue, theta], curr)
+                exp = ct.lastTradeDateOrContractMonth
+                if exp not in summe_exp:
+                    summe_exp[exp] = {}
+                accumulate_values(summe_exp[exp], [kostenbasis, pi.marketValue, theta], curr)
             accumulate_values(summe, [kostenbasis, pi.marketValue, theta], curr)
             table.add_row(*row)
         table.add_section()
         for (curr, values) in summe.items():
-            (sum_kostenbasis, sum_marketValue, sum_theta) = values
-            pnl = sum_marketValue - sum_kostenbasis
-            guv_prozent = (pnl / abs(sum_kostenbasis)) * 100.0 if sum_kostenbasis != 0.0 else 0.0
-            row = ['', '', f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
-                   f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '']
-            if show_options_details:
-                row.extend(['', f'{sum_theta:.2f} {curr}'])
-            table.add_row(*row)
+            add_summary(f'total {curr}', values, curr, show_options_details, table)
+        if show_options_details:
+            table.add_section()
+            for undl in sorted(summe_undl.keys()):
+                for (curr, values) in summe_undl[undl].items():
+                    add_summary(f'total {undl}', values, curr, show_options_details, table)
+            table.add_section()
+            for exp in sorted(summe_exp.keys()):
+                for (curr, values) in summe_exp[exp].items():
+                    # XXX should the expiration output be shortened?
+                    add_summary(f'total {exp}', values, curr, show_options_details, table)
         console.print(Panel(table))
 
 def printAccountValues(accountValues: list[AccountValue]) -> None:
