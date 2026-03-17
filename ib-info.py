@@ -45,14 +45,18 @@
 #   - getDTE() output should get cached
 # - summary per contract type and underlying
 # - overview pages markets
+# - Warn if margin is above certain level. No new (option) positions above a certain level.
+#   Close contracts above a certain level?
 # - allow different sorting strategies for overview pages
 # - Should large numbers use "." as thousand separator?
 # - Output time of last data update from TWS into overview pages.
 # - Add cash-like symbols to amount of optional cash: SGOV/BIL, US-T-Bills, TLT...
+# - Warn about negative cash values.
 # - Add automatic trading.
 # - If TWS is suspended, this script times out without any real timeout.
 # - How to allow for re-connects?
 # - Should disconnect be done within a finally clause in case of errors?
+# - add sqlite database for historical data?
 #
 # pylint: disable=W0511,R0912,C0103,C0114,C0115,C0116
 #
@@ -632,6 +636,7 @@ def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> No
                 continue
             curr = get_currency_symbol(ct.currency)
             accumulate_values(sum_sp, [ct.strike * pi.position * float(ct.multiplier)], curr)
+        # XXX Also add open trades into notional value calculation.
         if not sum_sp:
             continue
         print()
