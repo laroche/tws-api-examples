@@ -43,7 +43,6 @@
 #   - list weighted average strike price for Put/Call Short Options per underlying
 #   - grouping of complex (future) options
 #   - getDTE() output should get cached
-#   - summary by underlying or expiration date
 # - summary per contract type and underlying
 # - overview pages markets
 # - allow different sorting strategies for overview pages
@@ -517,7 +516,7 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             table = Table(title=f'Options-Portfolio von {account}')
             show_options_details = True
         elif currency_options:
-            table = Table(title=f'Währungs-Portfolio von {account}')
+            table = Table(title=f'Währungs-Options-Portfolio von {account}')
             show_options_details = True
         else:
             table = Table(title=f'Portfolio von {account}')
