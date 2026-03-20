@@ -2,7 +2,7 @@
 #
 # Copyright (C) 2023,2026 Florian La Roche <Florian.LaRoche@gmail.com>
 #
-# Tested on Debian. (Should run fine on Ubuntu.)
+# Tested on Debian. (Should run fine on Ubuntu and any other Linux.)
 #
 # Installation/preparation:
 # sudo apt-get install python3-venv python3-rich python3-pandas
@@ -26,9 +26,10 @@
 #
 # TODO:
 # - Make this also a web application.
-# - Translate all prices into Euro as an option.
+# - Translate all prices into Euro (base currency) as an option.
 # - Allow translation of output into different languages.
 # - For currency overview futures are not yet included.
+# - Allow for nice/modern config file.
 # - Add to options output:
 #   - price underlying
 #   - delta, gamma, theta, vega values
@@ -36,12 +37,12 @@
 #     Show also needed cash as percentage of all available cash.
 #   - list all ITM options
 #   - list all options < 21 DTE, maybe only if delta is above a certain value
-#   - list all long optins with DTE < 60(?) that should get rolled (hedges, Delta < 5)
+#   - list all long options with DTE < 60(?) that should get rolled (hedges, Delta < 5)
 #   - list all short options with delta > 40 that should get rolled
-#     - calculate the best delta for rolling options by looking at current prices
+#     - calculate the best delta/time for rolling options by looking at current prices
 #   - list all short call options not covered by stock
 #   - list weighted average strike price for Put/Call Short Options per underlying
-#   - grouping of complex (future) options
+#   - grouping of complex (future) options, advise on next steps for strategies
 #   - getDTE() output should get cached
 # - summary per contract type and underlying
 # - overview pages markets
@@ -52,8 +53,8 @@
 # - Output time of last data update from TWS into overview pages.
 # - Add cash-like symbols to amount of optional cash: SGOV/BIL, US-T-Bills, TLT...
 # - Warn about negative cash values.
-# - Add automatic trading.
-# - If TWS is suspended, this script times out without any real timeout.
+# - Add automatic trading and advise on trading strategies.
+# - If TWS is suspended (due to mobile app started), this script times out and hangs.
 # - How to allow for re-connects?
 # - Should disconnect be done within a finally clause in case of errors?
 # - add sqlite database for historical data?
@@ -512,29 +513,29 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
         # XXX sort pf
         show_options_details = False
         if non_options:
-            table = Table(title=f'Portfolio (ohne Optionen) von {account}')
+            table = Table(title=f'portfolio (without options) {account}')
         elif future_options:
-            table = Table(title=f'Future-Optionen-Portfolio von {account}')
+            table = Table(title=f'future options portfolio {account}')
             show_options_details = True
         elif options:
-            table = Table(title=f'Options-Portfolio von {account}')
+            table = Table(title=f'options portfolio {account}')
             show_options_details = True
         elif currency_options:
-            table = Table(title=f'Währungs-Options-Portfolio von {account}')
+            table = Table(title=f'currency hedging portfolio {account}')
             show_options_details = True
         else:
-            table = Table(title=f'Portfolio von {account}')
-        table.add_column('Anzahl', justify='right')
-        table.add_column('Name')
-        table.add_column('GuV', justify='right')
-        table.add_column('GuV %', justify='right')
-        table.add_column('Marktwert', justify='right')
-        table.add_column('Kostenbasis', justify='right')
-        table.add_column('aktueller Kurs', justify='right')
-        table.add_column('Durchschnittskurs', justify='right')
+            table = Table(title=f'complete portfolio {account}')
+        table.add_column('pos.', justify='right')
+        table.add_column('instrument')
+        table.add_column('PnL', justify='right')
+        table.add_column('PnL %', justify='right')
+        table.add_column('market value', justify='right')
+        table.add_column('cost basis', justify='right')
+        table.add_column('current price', justify='right')
+        table.add_column('average price', justify='right')
         if show_options_details:
             table.add_column('DTE', justify='right')
-            table.add_column('Daily Theta', justify='right')
+            table.add_column('daily theta', justify='right')
             #table.add_column('Kurs vom Basiswert', justify='right')
         summe: dict[str, list[float]] = {}
         if show_options_details:
@@ -676,7 +677,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     await showPortfolio(ib, console, accounts, portfolio, future_options=True)
     await showPortfolio(ib, console, accounts, portfolio, options=True)
     ShowLessThanDTE(accounts, portfolio, 21)
-    ShowLessThanDTE(accounts, portfolio, 2)
+    ShowLessThanDTE(accounts, portfolio, 4)
     await ShowITM(ib, accounts, portfolio)
     ShowNotionalValue(accounts, portfolio)
     await showPortfolio(ib, console, accounts, portfolio, currency_options=True)
