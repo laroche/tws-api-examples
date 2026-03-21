@@ -330,6 +330,7 @@ async def get_ticker_for_stock(ib: IB, symbol: str, primary_exchange: str,
     return await get_ticker_for_contract(ib, contract, generic_tick_list,
         required_fields, optional_fields)
 
+# Convert currency name into short currency symbol:
 currency_conversion = {
     'EUR': '€',
     'USD': '$'}
@@ -342,12 +343,14 @@ def print_data(value: float) -> str:
     #    return locale.format_string('%d', round(value / 1000), grouping=True) + 'T'
     return locale.format_string('%d', round(value), grouping=True)
 
+# Debugging output of accountSummary:
 def printAccountSummary(accountSummary: list[AccountValue]) -> None:
     print()
     print('Account Summary:')
     for a in accountSummary:
         print(a)
 
+# Extract key data from accountSummary:
 def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -> list[tuple[str,
     str, str, str, str]]:
     ret = []
@@ -369,6 +372,7 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
         ret.append((account, nav_str, margin, cash_str, cash_percent))
     return ret
 
+# Display key data from accountSummary:
 def showAccountSummary(console: Console, accounts: list[str],
     accountSummary: list[AccountValue]) -> None:
     if verbose >= 3:
@@ -391,6 +395,7 @@ def showAccountSummary(console: Console, accounts: list[str],
         table.add_row(f'{account}', f'{nav}', f'{margin}', f'{cash} ({cash_percent})')
     console.print(Panel(table))
 
+# Store market price of instruments into a dictionary:
 MarketPrices: dict[str, float] = {}
 
 def collectStockMarketPrices(portfolio: list[PortfolioItem]) -> None:
@@ -408,26 +413,32 @@ async def getStockMarketPrice(symbol: str, ib: IB) -> float | None:
         warn_once(logger,
             f'Not getting market price for {symbol}. ITM/theta calculations might be wrong.')
         return None
+    # Now ask for current online market price:
     # XXX cache this value for faster lookup as well:
     #ticker = await get_ticker_for_stock(ib, symbol, primaryExchange)
     ticker = await get_ticker_for_stock(ib, symbol, 'AMEX', 'AMEX') # XXX
     return ticker.marketPrice()
 
+# Strip ".0" at end of string:
 def strip_decimal_zero(value: str) -> str:
     return value[:-2] if value.endswith('.0') else value
 
+# Return position size as string:
 def getPosition(pi: PortfolioItem) -> str:
     return strip_decimal_zero(f'{pi.position}')
 
+# Return strike price as string:
 def getStrike(contract: Contract) -> str:
     return strip_decimal_zero(f'{contract.strike}')
 
 # Current year:
 cur_year: str | None = None
 
+# Return instrument name as string:
 def getName(contract: Contract) -> str:
     if not isinstance(contract, (FuturesOption, Option)):
         return contract.localSymbol
+    # Options require some more work for an instrument name:
     expiration = contract.lastTradeDateOrContractMonth
     if ShowYearWithTwoDigits:
         expiration = expiration[2:]
@@ -436,6 +447,7 @@ def getName(contract: Contract) -> str:
             expiration = expiration[4:]
     return f'{contract.symbol} {contract.right}{getStrike(contract)} {expiration}'
 
+# Return DTE (Days Til Expiration) for an option/future:
 #@lru_cache(maxsize=1024)
 def getDTE(contract: Contract) -> int:
     expiration = contract.lastTradeDateOrContractMonth
@@ -449,6 +461,7 @@ def getDTE(contract: Contract) -> int:
     dte = d.date() - datetime.date.today()
     return dte.days
 
+# Return daily theta and DTE:
 async def getThetaDTE(pi: PortfolioItem, ib: IB) -> tuple[float, int]:
     ct = pi.contract
     dte = getDTE(ct)
@@ -463,12 +476,14 @@ async def getThetaDTE(pi: PortfolioItem, ib: IB) -> tuple[float, int]:
     theta = value / (dte + 1) if dte >= 0 else 0.0
     return (theta, dte)
 
+# Debug output of portfolio data:
 def showPortfolioDebug(portfolio: list[PortfolioItem]) -> None:
     print()
     print('Portfolio:')
     for p in portfolio:
         print(p)
 
+# Sum up values within individual portfolio items:
 def accumulate_values(d: dict[str, list[float]], values: list[float], currency: str) -> None:
     """Generic accumulator for currency-keyed dictionaries."""
     # Check if we need to add a new currency:
@@ -478,6 +493,8 @@ def accumulate_values(d: dict[str, list[float]], values: list[float], currency: 
     for i, v in enumerate(values):
         d[currency][i] += v
 
+# Output a summary line for the portfolio (could be for the complete portfolio, or
+# just a summary for one expiration date or for one underlying:
 def add_summary(name: str, values: list[float], curr: str, show_options_details: bool,
     table: Table) -> None:
     (sum_costbasis, sum_marketValue, sum_theta) = values
@@ -489,6 +506,7 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
         row.extend(['', f'{sum_theta:.2f} {curr}'])
     table.add_row(*row)
 
+# Output different portfolio views:
 async def showPortfolio(ib: IB, console: Console, accounts: list[str],
     portfolio: list[PortfolioItem], non_options: bool = False, future_options: bool = False,
     options: bool = False, currency_options: bool = False) -> None:
@@ -579,12 +597,14 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                     add_summary(f'total {exp}', values, curr, show_options_details, table)
         console.print(Panel(table))
 
+# Debug output for accountValues:
 def printAccountValues(accountValues: list[AccountValue]) -> None:
     print()
     print('Account Values:')
     for a in accountValues:
         print(a)
 
+# Output list of options which expire in less than 'dte' days:
 def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: int) -> None:
     for account in accounts:
         pf = []
@@ -601,6 +621,7 @@ def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: in
             print(f'{getPosition(p)} {getName(p.contract)} ({getDTE(p.contract)} DTE)')
         print()
 
+# Output list of options which are ITM (In The Money):
 async def ShowITM(ib: IB, accounts: list[str], portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
         pf = []
@@ -624,6 +645,8 @@ async def ShowITM(ib: IB, accounts: list[str], portfolio: list[PortfolioItem]) -
             print(f'{getPosition(p)} {getName(p.contract)} with price {marketPrice:.2f} {curr}')
         print()
 
+# If all short puts get assigned, what amount of cash (notional vlaue) would be needed
+# to pay all these assignments?
 # XXX Maybe list all individual short puts with their needed cash sum:
 def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
@@ -648,6 +671,7 @@ def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> No
             print(f'Cash needed if all short puts get assigned for account {account}: {-summe[0]:.0f} {curr}')
         print()
 
+# Summary function to output all portfolio information of the account:
 async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = None,
     accountSummary: list[AccountValue] | None = None) -> None:
     if accounts is None:
@@ -708,6 +732,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     #for trade in orders:
     #    print(f'{trade.contract.symbol}: {trade.order.action} {trade.order.totalQuantity}')
 
+# argument parser:
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description='Display IBKR portfolio information',
@@ -769,6 +794,7 @@ Examples:
         help='Suppress output (opposite of -v)')
     return parser
 
+# Create a network connection to TWS/IBG:
 async def safe_connect(host: str, port: int, client_id: int, readonly: bool, account: str) -> IB:
     ib = IB()
     try:
