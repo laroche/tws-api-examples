@@ -395,7 +395,7 @@ MarketPrices: dict[str, float] = {}
 
 def collectStockMarketPrices(portfolio: list[PortfolioItem]) -> None:
     for pi in portfolio:
-        # XXX Future Prices should also get added
+        # XXX future prices should also get added
         if isinstance(pi.contract, Stock):
             # XXX check if different values exist?
             MarketPrices[pi.contract.localSymbol] = pi.marketPrice
@@ -480,11 +480,11 @@ def accumulate_values(d: dict[str, list[float]], values: list[float], currency: 
 
 def add_summary(name: str, values: list[float], curr: str, show_options_details: bool,
     table: Table) -> None:
-    (sum_kostenbasis, sum_marketValue, sum_theta) = values
-    pnl = sum_marketValue - sum_kostenbasis
-    guv_prozent = (pnl / abs(sum_kostenbasis)) * 100.0 if sum_kostenbasis != 0.0 else 0.0
-    row = ['', name, f'{pnl:.0f} {curr}', f'{guv_prozent:.1f}%',
-           f'{sum_marketValue:.0f} {curr}', f'{sum_kostenbasis:.0f} {curr}', '', '']
+    (sum_costbasis, sum_marketValue, sum_theta) = values
+    pnl = sum_marketValue - sum_costbasis
+    pnl_percent = (pnl / abs(sum_costbasis)) * 100.0 if sum_costbasis != 0.0 else 0.0
+    row = ['', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.1f}%',
+           f'{sum_marketValue:.0f} {curr}', f'{sum_costbasis:.0f} {curr}', '', '']
     if show_options_details:
         row.extend(['', f'{sum_theta:.2f} {curr}'])
     table.add_row(*row)
@@ -544,11 +544,11 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
         for pi in pf:
             pnl = pi.unrealizedPNL
             curr = get_currency_symbol(pi.contract.currency)
-            kostenbasis = pi.position * pi.averageCost
-            guv_prozent = (pnl / abs(kostenbasis) * 100.0) if kostenbasis != 0.0 else 0.0
+            costbasis = pi.position * pi.averageCost
+            pnl_percent = (pnl / abs(costbasis) * 100.0) if costbasis != 0.0 else 0.0
             name = getName(pi.contract)
-            row = [f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}', f'{guv_prozent:.0f}%',
-                   f'{pi.marketValue:.0f} {curr}', f'{kostenbasis:.0f} {curr}',
+            row = [f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.0f}%',
+                   f'{pi.marketValue:.0f} {curr}', f'{costbasis:.0f} {curr}',
                    f'{pi.marketPrice}', f'{pi.averageCost}']
             theta = 0.0
             if show_options_details:
@@ -557,13 +557,12 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                 row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}'])
                 if ct.symbol not in summe_undl:
                     summe_undl[ct.symbol] = {}
-                accumulate_values(summe_undl[ct.symbol],
-                    [kostenbasis, pi.marketValue, theta], curr)
+                accumulate_values(summe_undl[ct.symbol], [costbasis, pi.marketValue, theta], curr)
                 exp = ct.lastTradeDateOrContractMonth
                 if exp not in summe_exp:
                     summe_exp[exp] = {}
-                accumulate_values(summe_exp[exp], [kostenbasis, pi.marketValue, theta], curr)
-            accumulate_values(summe, [kostenbasis, pi.marketValue, theta], curr)
+                accumulate_values(summe_exp[exp], [costbasis, pi.marketValue, theta], curr)
+            accumulate_values(summe, [costbasis, pi.marketValue, theta], curr)
             table.add_row(*row)
         table.add_section()
         for (curr, values) in summe.items():
