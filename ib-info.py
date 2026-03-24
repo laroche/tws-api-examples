@@ -503,7 +503,7 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
     row = ['', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.1f}%',
            f'{sum_marketValue:.0f} {curr}', f'{sum_costbasis:.0f} {curr}', '', '']
     if show_options_details:
-        row.extend(['', f'{sum_theta:.2f} {curr}', underlying_price])
+        row.extend(['', f'{sum_theta:.2f} {curr}', underlying_price, ''])
     table.add_row(*row)
 
 # Output different portfolio views:
@@ -555,6 +555,7 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             table.add_column('DTE', justify='right')
             table.add_column('daily theta', justify='right')
             table.add_column('price underlying', justify='right')
+            table.add_column('ITM', justify='right')
         summe: dict[str, list[float]] = {}
         if show_options_details:
             summe_undl: dict[str, dict[str, list[float]]] = {}
@@ -573,7 +574,13 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                 ct = pi.contract
                 (theta, dte, undl_price) = await getThetaDTE(pi, ib)
                 undl_price_ = f'{undl_price:.2f} {curr}' if undl_price is not None else ''
-                row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_])
+                ITM = ''
+                if undl_price is not None:
+                    if ct.right == 'P' and undl_price <= ct.strike:
+                        ITM = 'Yes'
+                    if ct.right == 'C' and undl_price >= ct.strike:
+                        ITM = 'Yes'
+                row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_, ITM])
                 if ct.symbol not in summe_undl:
                     summe_undl[ct.symbol] = {}
                 accumulate_values(summe_undl[ct.symbol], [costbasis, pi.marketValue, theta], curr)
