@@ -461,8 +461,8 @@ def getDTE(contract: Contract) -> int:
     dte = d.date() - datetime.date.today()
     return dte.days
 
-# Return daily theta and DTE:
-async def getThetaDTE(pi: PortfolioItem, ib: IB) -> tuple[float, int]:
+# Return daily theta, DTE and underlying_price:
+async def getThetaDTE(pi: PortfolioItem, ib: IB) -> tuple[float, int, float | None]:
     ct = pi.contract
     dte = getDTE(ct)
     value = pi.marketValue
@@ -474,7 +474,7 @@ async def getThetaDTE(pi: PortfolioItem, ib: IB) -> tuple[float, int]:
         if ct.right == 'C' and underlying_price > ct.strike:
             value -= (underlying_price - ct.strike) * float(ct.multiplier) * pi.position
     theta = value / (dte + 1) if dte >= 0 else 0.0
-    return (theta, dte)
+    return (theta, dte, underlying_price)
 
 # Debug output of portfolio data:
 def showPortfolioDebug(portfolio: list[PortfolioItem]) -> None:
@@ -496,14 +496,14 @@ def accumulate_values(d: dict[str, list[float]], values: list[float], currency: 
 # Output a summary line for the portfolio (could be for the complete portfolio, or
 # just a summary for one expiration date or for one underlying:
 def add_summary(name: str, values: list[float], curr: str, show_options_details: bool,
-    table: Table) -> None:
+    table: Table, underlying_price: str) -> None:
     (sum_costbasis, sum_marketValue, sum_theta) = values
     pnl = sum_marketValue - sum_costbasis
     pnl_percent = (pnl / abs(sum_costbasis)) * 100.0 if sum_costbasis != 0.0 else 0.0
     row = ['', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.1f}%',
            f'{sum_marketValue:.0f} {curr}', f'{sum_costbasis:.0f} {curr}', '', '']
     if show_options_details:
-        row.extend(['', f'{sum_theta:.2f} {curr}'])
+        row.extend(['', f'{sum_theta:.2f} {curr}', underlying_price])
     table.add_row(*row)
 
 # Output different portfolio views:
@@ -554,7 +554,7 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
         if show_options_details:
             table.add_column('DTE', justify='right')
             table.add_column('daily theta', justify='right')
-            #table.add_column('Kurs vom Basiswert', justify='right')
+            table.add_column('price underlying', justify='right')
         summe: dict[str, list[float]] = {}
         if show_options_details:
             summe_undl: dict[str, dict[str, list[float]]] = {}
@@ -571,8 +571,9 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             theta = 0.0
             if show_options_details:
                 ct = pi.contract
-                (theta, dte) = await getThetaDTE(pi, ib)
-                row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}'])
+                (theta, dte, undl_price) = await getThetaDTE(pi, ib)
+                undl_price_ = f'{undl_price:.2f} {curr}' if undl_price is not None else ''
+                row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_])
                 if ct.symbol not in summe_undl:
                     summe_undl[ct.symbol] = {}
                 accumulate_values(summe_undl[ct.symbol], [costbasis, pi.marketValue, theta], curr)
@@ -584,17 +585,20 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             table.add_row(*row)
         table.add_section()
         for (curr, values) in summe.items():
-            add_summary(f'total {curr}', values, curr, show_options_details, table)
+            add_summary(f'total {curr}', values, curr, show_options_details, table, '')
         if show_options_details:
             table.add_section()
             for undl in sorted(summe_undl.keys()):
                 for (curr, values) in summe_undl[undl].items():
-                    add_summary(f'total {undl}', values, curr, show_options_details, table)
+                    undl_price = MarketPrices.get(undl)
+                    undl_price_ = f'{undl_price:.2f} {curr}' if undl_price is not None else ''
+                    add_summary(f'total {undl}', values, curr, show_options_details, table,
+                                undl_price_)
             table.add_section()
             for exp in sorted(summe_exp.keys()):
                 for (curr, values) in summe_exp[exp].items():
                     # XXX should the expiration output be shortened?
-                    add_summary(f'total {exp}', values, curr, show_options_details, table)
+                    add_summary(f'total {exp}', values, curr, show_options_details, table, '')
         console.print(Panel(table))
 
 # Debug output for accountValues:
