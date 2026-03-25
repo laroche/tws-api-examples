@@ -503,12 +503,14 @@ def isITM(contract: Contract, underlying_price: float | None) -> bool:
 # Output a summary line for the portfolio (could be for the complete portfolio, or
 # just a summary for one expiration date or for one underlying:
 def add_summary(name: str, values: list[float], curr: str, show_options_details: bool,
-    table: Table, underlying_price: str) -> None:
+    show_prices: bool, table: Table, underlying_price: str) -> None:
     (sum_costbasis, sum_marketValue, sum_theta) = values
     pnl = sum_marketValue - sum_costbasis
     pnl_percent = (pnl / abs(sum_costbasis)) * 100.0 if sum_costbasis != 0.0 else 0.0
     row = ['', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.1f}%',
-           f'{sum_marketValue:.0f} {curr}', f'{sum_costbasis:.0f} {curr}', '', '']
+           f'{sum_marketValue:.0f} {curr}', f'{sum_costbasis:.0f} {curr}']
+    if show_prices:
+        row.extend(['', ''])
     if show_options_details:
         row.extend(['', f'{sum_theta:.2f} {curr}', underlying_price, ''])
     table.add_row(*row)
@@ -537,8 +539,10 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             continue
         # XXX sort pf
         show_options_details = False
+        show_prices = False
         if non_options:
             table = Table(title=f'portfolio (without options) {account}')
+            show_prices = True
         elif future_options:
             table = Table(title=f'future options portfolio {account}')
             show_options_details = True
@@ -556,8 +560,9 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
         table.add_column('PnL %', justify='right')
         table.add_column('market value', justify='right')
         table.add_column('cost basis', justify='right')
-        table.add_column('current price', justify='right')
-        table.add_column('average price', justify='right')
+        if show_prices:
+            table.add_column('current price', justify='right')
+            table.add_column('average price', justify='right')
         if show_options_details:
             table.add_column('DTE', justify='right')
             table.add_column('daily theta', justify='right')
@@ -574,8 +579,9 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             pnl_percent = (pnl / abs(costbasis) * 100.0) if costbasis != 0.0 else 0.0
             name = getName(pi.contract)
             row = [f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.0f}%',
-                   f'{pi.marketValue:.0f} {curr}', f'{costbasis:.0f} {curr}',
-                   f'{pi.marketPrice}', f'{pi.averageCost}']
+                   f'{pi.marketValue:.0f} {curr}', f'{costbasis:.0f} {curr}']
+            if show_prices:
+                row.extend([f'{pi.marketPrice:.2f} {curr}', f'{pi.averageCost:.2f} {curr}'])
             theta = 0.0
             if show_options_details:
                 ct = pi.contract
@@ -594,7 +600,8 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             table.add_row(*row)
         table.add_section()
         for (curr, values) in summe.items():
-            add_summary(f'total {curr}', values, curr, show_options_details, table, '')
+            add_summary(f'total {curr}', values, curr,
+                show_options_details, show_prices, table, '')
         if show_options_details:
             table.add_section()
             # add summary lines per underlying
@@ -602,14 +609,15 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                 for (curr, values) in summe_undl[undl].items():
                     undl_price = MarketPrices.get(undl)
                     undl_price_ = f'{undl_price:.2f} {curr}' if undl_price is not None else ''
-                    add_summary(f'total {undl}', values, curr, show_options_details, table,
-                                undl_price_)
+                    add_summary(f'total {undl}', values, curr, show_options_details,
+                        show_prices, table, undl_price_)
             table.add_section()
             # add summary lines by expiration date
             for exp in sorted(summe_exp.keys()):
                 for (curr, values) in summe_exp[exp].items():
                     # XXX should the expiration output be shortened?
-                    add_summary(f'total {exp}', values, curr, show_options_details, table, '')
+                    add_summary(f'total {exp}', values, curr, show_options_details,
+                        show_prices, table, '')
         console.print(Panel(table))
 
 # Debug output for accountValues:
