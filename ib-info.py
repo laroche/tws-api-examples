@@ -31,11 +31,9 @@
 # - For currency overview futures are not yet included.
 # - Allow for nice/modern config file.
 # - Add to options output:
-#   - price underlying
 #   - delta, gamma, theta, vega values
 #   - list notional value of all stock option short puts if assigned
 #     Show also needed cash as percentage of all available cash.
-#   - list all ITM options
 #   - list all options < 21 DTE, maybe only if delta is above a certain value
 #   - list all long options with DTE < 60(?) that should get rolled (hedges, Delta < 5)
 #   - list all short options with delta > 40 that should get rolled
@@ -493,6 +491,15 @@ def accumulate_values(d: dict[str, list[float]], values: list[float], currency: 
     for i, v in enumerate(values):
         d[currency][i] += v
 
+def isITM(contract: Contract, underlying_price: float | None) -> bool:
+    if underlying_price is None:
+        return False
+    if contract.right == 'P' and underlying_price <= contract.strike:
+        return True
+    if contract.right == 'C' and underlying_price >= contract.strike:
+        return True
+    return False
+
 # Output a summary line for the portfolio (could be for the complete portfolio, or
 # just a summary for one expiration date or for one underlying:
 def add_summary(name: str, values: list[float], curr: str, show_options_details: bool,
@@ -574,12 +581,7 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                 ct = pi.contract
                 (theta, dte, undl_price) = await getThetaDTE(pi, ib)
                 undl_price_ = f'{undl_price:.2f} {curr}' if undl_price is not None else ''
-                ITM = ''
-                if undl_price is not None:
-                    if ct.right == 'P' and undl_price <= ct.strike:
-                        ITM = 'Yes'
-                    if ct.right == 'C' and undl_price >= ct.strike:
-                        ITM = 'Yes'
+                ITM = 'Yes' if isITM(ct, undl_price) else ''
                 row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_, ITM])
                 if ct.symbol not in summe_undl:
                     summe_undl[ct.symbol] = {}
@@ -595,6 +597,7 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             add_summary(f'total {curr}', values, curr, show_options_details, table, '')
         if show_options_details:
             table.add_section()
+            # add summary lines per underlying
             for undl in sorted(summe_undl.keys()):
                 for (curr, values) in summe_undl[undl].items():
                     undl_price = MarketPrices.get(undl)
@@ -602,6 +605,7 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                     add_summary(f'total {undl}', values, curr, show_options_details, table,
                                 undl_price_)
             table.add_section()
+            # add summary lines by expiration date
             for exp in sorted(summe_exp.keys()):
                 for (curr, values) in summe_exp[exp].items():
                     # XXX should the expiration output be shortened?
@@ -640,20 +644,16 @@ async def ShowITM(ib: IB, accounts: list[str], portfolio: list[PortfolioItem]) -
             ct = pi.contract
             if pi.account != account or not isinstance(ct, Option):
                 continue
-            marketPrice = await getStockMarketPrice(ct.symbol, ib)
-            if marketPrice is None:
-                continue
-            if ct.right == 'P' and marketPrice <= ct.strike:
-                pf.append((pi, marketPrice))
-            if ct.right == 'C' and marketPrice >= ct.strike:
-                pf.append((pi, marketPrice))
+            underlying_price = await getStockMarketPrice(ct.symbol, ib)
+            if isITM(ct, underlying_price):
+                pf.append((pi, underlying_price))
         if not pf:
             continue
         print()
         print(f'List all In The Money (ITM) options for account {account}:')
-        for (p, marketPrice) in pf:
+        for (p, undl_price) in pf:
             curr = get_currency_symbol(p.contract.currency)
-            print(f'{getPosition(p)} {getName(p.contract)} with price {marketPrice:.2f} {curr}')
+            print(f'{getPosition(p)} {getName(p.contract)} with price {undl_price:.2f} {curr}')
         print()
 
 # If all short puts get assigned, what amount of cash (notional vlaue) would be needed
@@ -679,7 +679,8 @@ def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> No
                 continue
             # XXX Show also needed cash as percentage of all available cash:
             #cash_percent = str(round(-summe[0] * 100.0 / all_cash)) + '%'
-            print(f'Cash needed if all short puts get assigned for account {account}: {-summe[0]:.0f} {curr}')
+            summe_str = print_data(-summe[0]) + curr
+            print(f'Cash needed if all short puts get assigned for account {account}: {summe_str}')
         print()
 
 # Summary function to output all portfolio information of the account:
