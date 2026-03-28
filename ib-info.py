@@ -329,6 +329,37 @@ async def get_ticker_for_stock(ib: IB, symbol: str, primary_exchange: str,
     return await get_ticker_for_contract(ib, contract, generic_tick_list,
         required_fields, optional_fields)
 
+currency_prices: dict[str, float] = {}
+
+async def setupForex(ib: IB) -> None:
+    # XXX Find out needed_currencies by inspecting the portfolio.
+    needed_currencies = ['EUR']
+    # XXX Query for all contracts in parallel:
+    #contracts = [ Forex(pair) for pair in needed_currencies ]
+    for pair in needed_currencies:
+        forex_ = Forex(pair + 'USD')
+        qualified = await qualify_contracts(ib, forex_)
+        if not qualified:
+            warn_once(logger,
+                f'Not getting market price for {pair}USD.')
+            continue
+        forex = qualified[0]
+        #print(forex)
+        #ret = await ib.reqContractDetailsAsync(forex)
+        #print(ret)
+        ib.reqMktData(forex, '', False, False)
+        ticker = ib.ticker(forex)
+        if ticker is None:
+            warn_once(logger,
+                f'Not getting market price for {pair}USD.')
+            continue
+        ret = await __wait_for_market_price__(ticker)
+        if ret is False:
+            raise
+        #print(ticker.marketPrice())
+        #print(ticker)
+        currency_prices[pair] = ticker.marketPrice()
+
 # Convert currency name into short currency symbol:
 currency_conversion = {
     'EUR': '€',
@@ -717,6 +748,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
         showPortfolioDebug(portfolio)
 
     collectStockMarketPrices(portfolio)
+    #await setupForex(ib)
     await showPortfolio(ib, console, accounts, portfolio)
     await showPortfolio(ib, console, accounts, portfolio, non_options=True)
     await showPortfolio(ib, console, accounts, portfolio, future_options=True)
