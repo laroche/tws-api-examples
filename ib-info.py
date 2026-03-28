@@ -355,10 +355,13 @@ async def setupForex(ib: IB) -> None:
             continue
         ret = await __wait_for_market_price__(ticker)
         if ret is False:
-            raise
-        #print(ticker.marketPrice())
-        #print(ticker)
-        currency_prices[pair] = ticker.marketPrice()
+            warn_once(logger,
+                f'Not getting market price for {pair}USD.')
+            continue
+        marketPrice = ticker.marketPrice()
+        currency_prices[pair] = marketPrice
+        #logger.info(f'Adding forex conversion {pair}USD = {marketPrice:.4f}.')
+        logger.warning(f'Adding forex conversion {pair}USD = {marketPrice:.4f}.')
 
 # Convert currency name into short currency symbol:
 currency_conversion = {
@@ -956,21 +959,6 @@ async def main(argv: list[str]) -> None:
     #spxValue = ticker.marketPrice()
     #await asyncio.sleep(2)
     #print(spxValue)
-    #print(ticker.marketPrice())
-
-    #contracts = [
-    #    Forex(pair) for pair in ("EURUSD", "USDJPY", "GBPUSD", "USDCHF", "USDCAD", "AUDUSD")
-    #]
-    #await ib.qualifyContractsAsync(*contracts)
-    #eurusd = contracts[0]
-    #ib.reqContractDetails(eurusd)
-    #for contract in contracts:
-    #    ib.reqMktData(contract, "", False, False)
-    #ticker = ib.ticker(eurusd)
-    #print(ticker.marketPrice())
-    #print(ticker)
-    #await asyncio.sleep(2)
-    #print(ticker)
     #print(ticker.marketPrice())
 
     #chains = ib.reqSecDefOptParams(spx.symbol, '', spx.secType, spx.conId)
