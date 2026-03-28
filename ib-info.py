@@ -43,6 +43,7 @@
 #   - grouping of complex (future) options, advise on next steps for strategies
 #   - getDTE() output should get cached
 # - summary per contract type and underlying
+# - Assets per currency overview: list all $/EUR-denominated assets.
 # - overview pages markets
 # - Warn if margin is above certain level. No new (option) positions above a certain level.
 #   Close contracts above a certain level?
@@ -412,9 +413,9 @@ async def getStockMarketPrice(symbol: str, ib: IB) -> float | None:
             f'Not getting market price for {symbol}. ITM/theta calculations might be wrong.')
         return None
     # Now ask for current online market price:
-    # XXX cache this value for faster lookup as well:
     #ticker = await get_ticker_for_stock(ib, symbol, primaryExchange)
     ticker = await get_ticker_for_stock(ib, symbol, 'AMEX', 'AMEX') # XXX
+    # XXX add symbol, ticker.marketPrice() into dict MarketPrices
     return ticker.marketPrice()
 
 # Strip ".0" at end of string:
@@ -463,7 +464,7 @@ def getDTE(contract: Contract) -> int:
 async def getThetaDTE(pi: PortfolioItem, ib: IB) -> tuple[float, int, float | None]:
     ct = pi.contract
     dte = getDTE(ct)
-    value = pi.marketValue
+    value = pi.marketValue # this is intrinsic + extrinsic value
     underlying_price = await getStockMarketPrice(ct.symbol, ib)
     if underlying_price is not None:
         # subtract intrinsic value
@@ -607,7 +608,7 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             # add summary lines per underlying
             for undl in sorted(summe_undl.keys()):
                 for (curr, values) in summe_undl[undl].items():
-                    undl_price = MarketPrices.get(undl)
+                    undl_price = await getStockMarketPrice(undl, ib)
                     undl_price_ = f'{undl_price:.2f} {curr}' if undl_price is not None else ''
                     add_summary(f'total {undl}', values, curr, show_options_details,
                         show_prices, table, undl_price_)
@@ -650,6 +651,7 @@ async def ShowITM(ib: IB, accounts: list[str], portfolio: list[PortfolioItem]) -
         pf = []
         for pi in portfolio:
             ct = pi.contract
+            # XXX Also output ITM Future Options?
             if pi.account != account or not isinstance(ct, Option):
                 continue
             underlying_price = await getStockMarketPrice(ct.symbol, ib)
