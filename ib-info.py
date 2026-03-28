@@ -72,8 +72,8 @@ import logging
 import datetime
 import argparse
 import asyncio
-from ib_async import (IB, FuturesOption, Option, AccountValue, PortfolioItem, Contract,
-    Stock, Ticker, Index, Forex, util)
+from ib_async import (IB, FuturesOption, Option, OptionComputation, AccountValue,
+    PortfolioItem, Contract, Stock, Ticker, Index, Forex, util)
 
 from rich.console import Console
 from rich.panel import Panel
@@ -100,7 +100,6 @@ def warn_once(mylogger: logging.Logger, msg: str) -> None:
     mylogger.warning(msg)
 
 # Turn off some of the more annoying logging output from ib_async
-#import ib_async
 #logging.getLogger('ib_async.ib').setLevel(logging.ERROR)
 #logging.getLogger('ib_async.wrapper').setLevel(logging.CRITICAL)
 
@@ -331,12 +330,55 @@ async def get_ticker_for_stock(ib: IB, symbol: str, primary_exchange: str,
 
 currency_prices: dict[str, float] = {}
 
+async def getGreeks(ib: IB, contract: Contract) -> OptionComputation | None:
+    if not UseMarketDataSubscription:
+        return None
+    qualified = await qualify_contracts(ib, contract)
+    if not qualified:
+        # XXX check contract.symbol if correct error output:
+        warn_once(logger, f'Not getting market price for {contract.symbol}.')
+        return None
+    if len(qualified) != 1:
+        print('len(qualified) == {len(qualified)}')
+        print(qualified)
+        raise
+    contract = qualified[0]
+    ib.reqMktData(contract, '', False, False)
+    ticker = ib.ticker(contract)
+    if ticker is None:
+        warn_once(logger, f'Not getting market price for {contract.symbol}.')
+        return None
+    ret = await __wait_for_greeks__(ticker)
+    if ret is False:
+        warn_once(logger, f'Not getting market price for {contract.symbol}.')
+        return None
+    #if ticker.askGreeks is not None and ticker.askGreeks.delta is not None:
+    #    print('askGreeks:')
+    #    print(ticker.askGreeks)
+    if ticker.modelGreeks is not None and ticker.modelGreeks.delta is not None:
+        print('modelGreeks:')
+        print(ticker.modelGreeks)
+        #OptionComputation(tickAttrib=0, impliedVol=0.2258832451295149, delta=-0.5464794341063147,
+        # optPrice=33.448818183129134, pvDividend=1.8133197629924416, gamma=0.006005219077206847,
+        # vega=1.176153119744875, theta=-0.12463084104138744, undPrice=633.4173583984375)
+    #if ticker.bidGreeks is not None and ticker.bidGreeks.delta is not None:
+    #    print('bidGreeks:')
+    #    print(ticker.bidGreeks)
+    #if ticker.lastGreeks is not None and ticker.lastGreeks.delta is not None:
+    #    print('lastGreeks:')
+    #    print(ticker.lastGreeks)
+    return ticker.modelGreeks
+
 async def getTickData(ib: IB, contract: Contract) -> float | None:
     qualified = await qualify_contracts(ib, contract)
     if not qualified:
         # XXX check contract.symbol if correct error output:
         warn_once(logger, f'Not getting market price for {contract.symbol}.')
         return None
+    if len(qualified) != 1:
+        print('len(qualified) == {len(qualified)}')
+        print(qualified)
+        raise
     contract = qualified[0]
     ib.reqMktData(contract, '', False, False)
     ticker = ib.ticker(contract)
@@ -653,6 +695,8 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             theta = 0.0
             if show_options_details:
                 ct = pi.contract
+                nixdata = await getGreeks(ib, ct) # XXX
+                #print(nixdata)
                 (theta, dte, undl_price) = await getThetaDTE(pi, ib)
                 undl_price_ = f'{undl_price:.2f} {curr}' if undl_price is not None else ''
                 ITM = 'Yes' if isITM(ct, undl_price) else ''
