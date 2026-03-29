@@ -695,10 +695,14 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                 (theta, dte, undl_price) = await getThetaDTE(pi, ib)
                 undl_price_ = f'{undl_price:.2f} {curr}' if undl_price is not None else ''
                 ITM = 'Yes' if isITM(ct, undl_price) else ''
-                row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_, ITM])
                 if UseMarketDataSubscription and gr is not None:
                     iv = gr.impliedVol*100.0 if gr.impliedVol is not None else ''
                     delta = gr.delta*100.0 if gr.delta is not None else ''
+                    if not undl_price_:
+                        # XXX also add to MarketPrices?
+                        undl_price_ = f'{gr.undPrice:.2f} {curr}'
+                row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_, ITM])
+                if UseMarketDataSubscription and gr is not None:
                     row.extend([f'{iv:.1f} %', f'{delta:.1f}',
                         f'{gr.gamma:.5f}', f'{gr.vega:.4f}', f'{gr.theta:.5f}'])
                         #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
