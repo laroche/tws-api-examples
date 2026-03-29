@@ -360,12 +360,9 @@ async def getGreeks(ib: IB, contract: Contract) -> OptionComputation | None:
     #if ticker.askGreeks is not None and ticker.askGreeks.delta is not None:
     #    print('askGreeks:')
     #    print(ticker.askGreeks)
-    if ticker.modelGreeks is not None and ticker.modelGreeks.delta is not None:
-        print('modelGreeks:')
-        print(ticker.modelGreeks)
-        #OptionComputation(tickAttrib=0, impliedVol=0.2258832451295149, delta=-0.5464794341063147,
-        # optPrice=33.448818183129134, pvDividend=1.8133197629924416, gamma=0.006005219077206847,
-        # vega=1.176153119744875, theta=-0.12463084104138744, undPrice=633.4173583984375)
+    #if ticker.modelGreeks is not None and ticker.modelGreeks.delta is not None:
+    #    print('modelGreeks:')
+    #    print(ticker.modelGreeks)
     #if ticker.bidGreeks is not None and ticker.bidGreeks.delta is not None:
     #    print('bidGreeks:')
     #    print(ticker.bidGreeks)
@@ -666,6 +663,15 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             table.add_column('daily theta', justify='right')
             table.add_column('price underlying', justify='right')
             table.add_column('ITM', justify='right')
+            if UseMarketDataSubscription:
+                table.add_column('IV', justify='right')
+                table.add_column('delta', justify='right')
+                table.add_column('gamma', justify='right')
+                table.add_column('vega', justify='right')
+                table.add_column('theta', justify='right')
+                #table.add_column('optPrice', justify='right')
+                #table.add_column('undPrice', justify='right')
+                #table.add_column('pvDividend', justify='right')
         summe: dict[str, list[float]] = {}
         if show_options_details:
             summe_undl: dict[str, dict[str, list[float]]] = {}
@@ -683,12 +689,19 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             theta = 0.0
             if show_options_details:
                 ct = pi.contract
-                nixdata = await getGreeks(ib, ct) # XXX
-                #print(nixdata)
+                gr = None
+                if UseMarketDataSubscription:
+                    gr = await getGreeks(ib, ct) # XXX
                 (theta, dte, undl_price) = await getThetaDTE(pi, ib)
                 undl_price_ = f'{undl_price:.2f} {curr}' if undl_price is not None else ''
                 ITM = 'Yes' if isITM(ct, undl_price) else ''
                 row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_, ITM])
+                if UseMarketDataSubscription and gr is not None:
+                    iv = gr.impliedVol*100.0 if gr.impliedVol is not None else ''
+                    delta = gr.delta*100.0 if gr.delta is not None else ''
+                    row.extend([f'{iv:.1f} %', f'{delta:.1f}',
+                        f'{gr.gamma:.5f}', f'{gr.vega:.4f}', f'{gr.theta:.5f}'])
+                        #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
                 if ct.symbol not in summe_undl:
                     summe_undl[ct.symbol] = {}
                 accumulate_values(summe_undl[ct.symbol], [costbasis, pi.marketValue, theta], curr)
