@@ -23,6 +23,9 @@
 # The client id must be unique per connection/client:
 # - client_id 0 is getting all transactions, including also TWS.
 # - client_id 1 (configurable) is getting transactions from other client_ids, but not TWS.
+# Even if market data is available for TWS, the API might not get market data
+# as well. Check the market data subscriptions in detail. Please check with
+# "UseMarketDataSubscription" below. Using subscription data is disabled by default.
 #
 # TODO:
 # - Make this also a web application.
@@ -42,6 +45,7 @@
 #   - list weighted average strike price for Put/Call Short Options per underlying
 #   - grouping of complex (future) options, advise on next steps for strategies
 #   - getDTE() output should get cached
+#   - request all option greek data in parallel and cache it
 # - summary per contract type and underlying
 # - Assets per currency overview: list all $/EUR-denominated assets.
 # - overview pages markets
@@ -99,10 +103,13 @@ logger = logging.getLogger(__name__)
 def warn_once(mylogger: logging.Logger, msg: str) -> None:
     mylogger.warning(msg)
 
-# Turn off some of the more annoying logging output from ib_async
+# Turn off some of the more annoying logging output from ib_async:
 #logging.getLogger('ib_async.ib').setLevel(logging.ERROR)
-#logging.getLogger('ib_async.wrapper').setLevel(logging.CRITICAL)
+logging.getLogger('ib_async.wrapper').setLevel(logging.CRITICAL)
 
+# Many subscriptions of market data are only available within the
+# TWS, but not for the (python) API. So by default, we set
+# access to market subscription data to False:
 UseMarketDataSubscription: bool = False
 
 # XXX How to detect base currency?
@@ -328,8 +335,6 @@ async def get_ticker_for_stock(ib: IB, symbol: str, primary_exchange: str,
     return await get_ticker_for_contract(ib, contract, generic_tick_list,
         required_fields, optional_fields)
 
-currency_prices: dict[str, float] = {}
-
 async def getGreeks(ib: IB, contract: Contract) -> OptionComputation | None:
     if not UseMarketDataSubscription:
         return None
@@ -369,7 +374,7 @@ async def getGreeks(ib: IB, contract: Contract) -> OptionComputation | None:
     #    print(ticker.lastGreeks)
     return ticker.modelGreeks
 
-async def getTickData(ib: IB, contract: Contract) -> float | None:
+async def getMarketPrice(ib: IB, contract: Contract) -> float | None:
     qualified = await qualify_contracts(ib, contract)
     if not qualified:
         # XXX check contract.symbol if correct error output:
@@ -391,6 +396,8 @@ async def getTickData(ib: IB, contract: Contract) -> float | None:
         return None
     return ticker.marketPrice()
 
+currency_prices: dict[str, float] = {}
+
 async def setupForex(ib: IB) -> None:
     # XXX Find out needed_currencies by inspecting the portfolio.
     needed_currencies = ['EUR']
@@ -398,30 +405,11 @@ async def setupForex(ib: IB) -> None:
     #contracts = [ Forex(pair) for pair in needed_currencies ]
     for pair in needed_currencies:
         forex_ = Forex(pair + 'USD')
-        qualified = await qualify_contracts(ib, forex_)
-        if not qualified:
-            warn_once(logger,
-                f'Not getting market price for {pair}USD.')
-            continue
-        forex = qualified[0]
-        #print(forex)
-        #ret = await ib.reqContractDetailsAsync(forex)
-        #print(ret)
-        ib.reqMktData(forex, '', False, False)
-        ticker = ib.ticker(forex)
-        if ticker is None:
-            warn_once(logger,
-                f'Not getting market price for {pair}USD.')
-            continue
-        ret = await __wait_for_market_price__(ticker)
-        if ret is False:
-            warn_once(logger,
-                f'Not getting market price for {pair}USD.')
-            continue
-        marketPrice = ticker.marketPrice()
-        currency_prices[pair] = marketPrice
-        #logger.info(f'Adding forex conversion {pair}USD = {marketPrice:.4f}.')
-        logger.warning(f'Adding forex conversion {pair}USD = {marketPrice:.4f}.')
+        marketPrice = await getMarketPrice(ib, forex_)
+        if marketPrice is not None:
+            currency_prices[pair] = marketPrice
+            #logger.info(f'Adding forex conversion {pair}USD = {marketPrice:.4f}.')
+            logger.warning(f'Adding forex conversion {pair}USD = {marketPrice:.4f}.')
 
 # Convert currency name into short currency symbol:
 currency_conversion = {
@@ -515,7 +503,7 @@ async def getStockMarketPrice(symbol: str, contract: Contract | None, ib: IB) ->
     # XXX support SMART or other/better defaults:
     contract = Stock(symbol, 'AMEX', currency='USD', primaryExchange='AMEX')
     #contract = Stock(symbol, 'SMART', currency='USD', primaryExchange='AMEX')
-    MarketPrice = await getTickData(ib, contract)
+    MarketPrice = await getMarketPrice(ib, contract)
     if MarketPrice is None:
         warn_once(logger,
             f'Not getting market price for {symbol}. ITM/theta calculations might be wrong.')
@@ -1003,6 +991,9 @@ async def main(argv: list[str]) -> None:
     #for symbol in symbols:
     #    tasks.append(fetch_data(ib, symbol))
     ##await asyncio.gather(*tasks)
+
+    #ret = await ib.reqContractDetailsAsync(contract)
+    #print(ret)
 
     #option = Option('EOE', '20171215', 490, 'P', 'FTA', multiplier=100)
     #calc = ib.calculateImpliedVolatility(option, optionPrice=6.1, underPrice=525)
