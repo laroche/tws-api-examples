@@ -46,6 +46,7 @@
 #   - grouping of complex (future) options, advise on next steps for strategies
 #   - getDTE() output should get cached
 #   - request all option greek data in parallel and cache it
+#   - also add historical prices for options, also check other data sources
 # - summary per contract type and underlying
 # - Assets per currency overview: list all $/EUR-denominated assets.
 # - overview pages markets
@@ -111,6 +112,9 @@ logging.getLogger('ib_async.wrapper').setLevel(logging.CRITICAL)
 # TWS, but not for the (python) API. So by default, we set
 # access to market subscription data to False:
 UseMarketDataSubscription: bool = False
+
+# Use delayed market data instead of realtime data?
+delayed_market_data = True
 
 # XXX How to detect base currency?
 #BASE = '€'
@@ -348,7 +352,7 @@ async def getGreeks(ib: IB, contract: Contract) -> OptionComputation | None:
         print(qualified)
         raise
     contract = qualified[0]
-    ib.reqMktData(contract, '', False, False)
+    ib.reqMktData(contract, snapshot=True)
     ticker = ib.ticker(contract)
     if ticker is None:
         warn_once(logger, f'Not getting market price for {contract.symbol}.')
@@ -382,7 +386,7 @@ async def getMarketPrice(ib: IB, contract: Contract) -> float | None:
         print(qualified)
         raise
     contract = qualified[0]
-    ib.reqMktData(contract, '', False, False)
+    ib.reqMktData(contract, snapshot=True)
     ticker = ib.ticker(contract)
     if ticker is None:
         warn_once(logger, f'Not getting market price for {contract.symbol}.')
@@ -700,7 +704,7 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                     delta = gr.delta*100.0 if gr.delta is not None else ''
                     if not undl_price_:
                         # XXX also add to MarketPrices?
-                        undl_price_ = f'{gr.undPrice:.2f} {curr}'
+                        undl_price_ = f'{gr.undPrice:.4f} {curr}'
                 row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_, ITM])
                 if UseMarketDataSubscription and gr is not None:
                     row.extend([f'{iv:.1f} %', f'{delta:.1f}',
@@ -997,10 +1001,13 @@ async def main(argv: list[str]) -> None:
 
     console = Console()
 
-    # 1 == realtime with subscriptions
+    # https://interactivebrokers.github.io/tws-api/market_data_type.html
+    # 1 == live, realtime with subscriptions
+    # 2 == frozen
     # 3 == delayed
     # 4 == delayed frozen
-    ib.reqMarketDataType(4)
+    MarketDataType = 4 if delayed_market_data else 1
+    ib.reqMarketDataType(MarketDataType)
 
     await showAccounts(ib, console)
 
@@ -1065,6 +1072,16 @@ async def main(argv: list[str]) -> None:
     #tickers = ib.reqTickers(*contracts)
     #contracts = ib.qualifyContracts(*contracts)
     #len(contracts)
+
+    #active_tickers = ib.tickers()
+    #if active_tickers:
+    #logger.info(f"Cancel {len(active_tickers)} subscripions:")
+    #for ticker in active_tickers:
+    #    logger.info(f"Cancel subscription for {ticker.contract.symbol}.")
+    #    try:
+    #        ib.cancelMktData(ticker.contract)
+    #    except:
+    #        pass
 
     # ticker.askGreeks ticker.bidGreeks ticker.lastGreeks ticker.modelGreeks
 
