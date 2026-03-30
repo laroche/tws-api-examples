@@ -837,7 +837,8 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
         showPortfolioDebug(portfolio)
 
     collectStockMarketPrices(portfolio)
-    # XXX await setupForex(ib)
+    if UseMarketDataSubscription:
+        await setupForex(ib)
     await showPortfolio(ib, console, accounts, portfolio)
     await showPortfolio(ib, console, accounts, portfolio, non_options=True)
     await showPortfolio(ib, console, accounts, portfolio, future_options=True)
