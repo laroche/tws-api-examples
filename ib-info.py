@@ -352,8 +352,7 @@ async def getGreeks(ib: IB, contract: Contract) -> OptionComputation | None:
         print(qualified)
         raise
     contract = qualified[0]
-    ib.reqMktData(contract, snapshot=True)
-    ticker = ib.ticker(contract)
+    ticker = ib.reqMktData(contract, snapshot=True)
     if ticker is None:
         warn_once(logger, f'Not getting market price for {contract.symbol}.')
         return None
@@ -386,8 +385,7 @@ async def getMarketPrice(ib: IB, contract: Contract) -> float | None:
         print(qualified)
         raise
     contract = qualified[0]
-    ib.reqMktData(contract, snapshot=True)
-    ticker = ib.ticker(contract)
+    ticker = ib.reqMktData(contract, snapshot=True)
     if ticker is None:
         warn_once(logger, f'Not getting market price for {contract.symbol}.')
         return None
