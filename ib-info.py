@@ -47,6 +47,7 @@
 #   - getDTE() output should get cached
 #   - request all option greek data in parallel and cache it
 #   - also add historical prices for options, also check other data sources
+#   - for option prices, also check option equivalent prices as comparison
 # - summary per contract type and underlying
 # - Assets per currency overview: list all $/EUR-denominated assets.
 # - overview pages markets
@@ -164,6 +165,7 @@ delayed_market_data = True
 #    log_filename = config.get('logging', 'filename')
 #    return config
 
+# XXX Maybe compaction not needed for real parallel requests:
 async def qualify_contracts(ib: IB, *contracts: Contract) -> list[Contract]:
     results = await ib.qualifyContractsAsync(*contracts)
     qualified: list[Contract] = []
