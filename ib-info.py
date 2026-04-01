@@ -340,26 +340,18 @@ async def get_ticker_for_stock(ib: IB, symbol: str, primary_exchange: str,
         required_fields, optional_fields)
 
 async def getGreeks(ib: IB, contract: Contract) -> OptionComputation | None:
-    if not UseMarketDataSubscription:
-        return None
+    # XXX check contract.symbol if correct error output:
     qualified = await qualify_contracts(ib, contract)
-    if not qualified:
-        # XXX check contract.symbol if correct error output:
-        warn_once(logger, f'Not getting market price for {contract.symbol}.')
-        return None
-    if len(qualified) != 1:
-        print('len(qualified) == {len(qualified)}')
-        print(qualified)
-        raise
-    contract = qualified[0]
-    ticker = ib.reqMktData(contract, snapshot=True)
-    if ticker is None:
-        warn_once(logger, f'Not getting market price for {contract.symbol}.')
-        return None
-    ret = await __wait_for_greeks__(ticker)
-    if ret is False:
-        warn_once(logger, f'Not getting market price for {contract.symbol}.')
-        return None
+    if qualified:
+        if len(qualified) != 1:
+            logger.warning(
+                f'More than one qualified contract: {contract.symbol} {len(qualified)}.')
+        contract = qualified[0]
+        ticker = ib.reqMktData(contract, snapshot=True)
+        if ticker is not None and await __wait_for_greeks__(ticker) is True:
+            return ticker.modelGreeks
+    warn_once(logger, f'Not getting market price for {contract.symbol}.')
+    return None
     #if ticker.askGreeks is not None and ticker.askGreeks.delta is not None:
     #    print('askGreeks:')
     #    print(ticker.askGreeks)
@@ -372,28 +364,20 @@ async def getGreeks(ib: IB, contract: Contract) -> OptionComputation | None:
     #if ticker.lastGreeks is not None and ticker.lastGreeks.delta is not None:
     #    print('lastGreeks:')
     #    print(ticker.lastGreeks)
-    return ticker.modelGreeks
 
 async def getMarketPrice(ib: IB, contract: Contract) -> float | None:
+    # XXX check contract.symbol if correct error output:
     qualified = await qualify_contracts(ib, contract)
-    if not qualified:
-        # XXX check contract.symbol if correct error output:
-        warn_once(logger, f'Not getting market price for {contract.symbol}.')
-        return None
-    if len(qualified) != 1:
-        print('len(qualified) == {len(qualified)}')
-        print(qualified)
-        raise
-    contract = qualified[0]
-    ticker = ib.reqMktData(contract, snapshot=True)
-    if ticker is None:
-        warn_once(logger, f'Not getting market price for {contract.symbol}.')
-        return None
-    ret = await __wait_for_market_price__(ticker)
-    if ret is False:
-        warn_once(logger, f'Not getting market price for {contract.symbol}.')
-        return None
-    return ticker.marketPrice()
+    if qualified:
+        if len(qualified) != 1:
+            logger.warning(
+                f'More than one qualified contract: {contract.symbol} {len(qualified)}.')
+        contract = qualified[0]
+        ticker = ib.reqMktData(contract, snapshot=True)
+        if ticker is not None and await __wait_for_market_price__(ticker) is True:
+            return ticker.marketPrice()
+    warn_once(logger, f'Not getting market price for {contract.symbol}.')
+    return None
 
 currency_prices: dict[str, float] = {}
 
@@ -494,11 +478,14 @@ async def getStockMarketPrice(symbol: str, contract: Contract | None, ib: IB) ->
             f'Not getting market price for {symbol}. ITM/theta calculations might be wrong.')
         return None
     # Now ask for current online market price:
-    # XXX: if not isinstance(contract, Stock): #XXX isinstance(contract, FuturesOption):
-    if isinstance(contract, FuturesOption) or contract is None: # XXX symbol == 'EUR':
+    # XXX if isinstance(contract, FuturesOption) or contract is None:
+    if not isinstance(contract, Stock):
         warn_once(logger,
             f'Not getting market price for {symbol}. ITM/theta calculations might be wrong.')
         return None
+    # XXX ticker = await get_ticker_for_stock(ib, symbol, primaryExchange)
+    # XXX ticker = await get_ticker_for_stock(ib, symbol, 'AMEX', 'AMEX')
+    # XXX MarketPrice = ticker.marketPrice()
     # XXX support SMART or other/better defaults:
     contract = Stock(symbol, 'AMEX', currency='USD', primaryExchange='AMEX')
     #contract = Stock(symbol, 'SMART', currency='USD', primaryExchange='AMEX')
@@ -509,10 +496,6 @@ async def getStockMarketPrice(symbol: str, contract: Contract | None, ib: IB) ->
     else:
         MarketPrices[symbol] = MarketPrice
     return MarketPrice
-    #ticker = await get_ticker_for_stock(ib, symbol, primaryExchange)
-    #ticker = await get_ticker_for_stock(ib, symbol, 'AMEX', 'AMEX') # XXX
-    # XXX add symbol, ticker.marketPrice() into dict MarketPrices
-    #return ticker.marketPrice()
 
 # Strip ".0" at end of string:
 def strip_decimal_zero(value: str) -> str:
@@ -560,7 +543,7 @@ def getDTE(contract: Contract) -> int:
 async def getThetaDTE(pi: PortfolioItem, ib: IB) -> tuple[float, int, float | None]:
     ct = pi.contract
     dte = getDTE(ct)
-    value = pi.marketValue # this is intrinsic + extrinsic value
+    value = pi.marketValue # value = intrinsic + extrinsic
     underlying_price = await getStockMarketPrice(ct.symbol, ct, ib)
     if underlying_price is not None:
         # subtract intrinsic value
@@ -698,10 +681,14 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                 undl_price_ = f'{undl_price:.2f} {curr}' if undl_price is not None else ''
                 ITM = 'Yes' if isITM(ct, undl_price) else ''
                 if UseMarketDataSubscription and gr is not None:
-                    iv = gr.impliedVol*100.0 if gr.impliedVol is not None else ''
-                    delta = gr.delta*100.0 if gr.delta is not None else ''
-                    if not undl_price_:
-                        # XXX also add to MarketPrices?
+                    iv = gr.impliedVol * 100.0 if gr.impliedVol is not None else ''
+                    delta = gr.delta * 100.0 if gr.delta is not None else ''
+                    if not undl_price_ and gr.undPrice is not None:
+                        # Only add if not yet available:
+                        if MarketPrices.get(ct.symbol) is None:
+                            logger.warning(
+                                f'Adding {ct.symbol} with price {gr.undPrice:.4f} {curr}.')
+                            MarketPrices[ct.symbol] = gr.undPrice
                         undl_price_ = f'{gr.undPrice:.4f} {curr}'
                 row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_, ITM])
                 if UseMarketDataSubscription and gr is not None:
@@ -738,13 +725,6 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                     add_summary(f'total {exp}', values, curr, show_options_details,
                         show_prices, table, '')
         console.print(Panel(table))
-
-# Debug output for accountValues:
-def printAccountValues(accountValues: list[AccountValue]) -> None:
-    print()
-    print('Account Values:')
-    for a in accountValues:
-        print(a)
 
 # Output list of options which expire in less than 'dte' days:
 def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: int) -> None:
@@ -810,6 +790,13 @@ def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> No
             summe_str = print_data(-summe[0]) + curr
             print(f'Cash needed if all short puts get assigned for account {account}: {summe_str}')
         print()
+
+# Debug output for accountValues:
+def printAccountValues(accountValues: list[AccountValue]) -> None:
+    print()
+    print('Account Values:')
+    for a in accountValues:
+        print(a)
 
 # Summary function to output all portfolio information of the account:
 async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = None,
