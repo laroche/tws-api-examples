@@ -517,7 +517,9 @@ def format_float(f: float | None, curr: str) -> str:
         return ''
     if f < 10.0:
         return f'{f:.4f} {curr}'
-    return f'{f:.2f} {curr}'
+    if f < 1000.0:
+        return f'{f:.2f} {curr}'
+    return f'{f:.0f} {curr}'
 
 # Current year:
 cur_year: str | None = None
