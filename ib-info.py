@@ -511,6 +511,14 @@ def getPosition(pi: PortfolioItem) -> str:
 def getStrike(contract: Contract) -> str:
     return strip_decimal_zero(f'{contract.strike}')
 
+# Format a float output, smaller numbers get 4 decimals:
+def format_float(f: float | None, curr: str) -> str:
+    if f is None:
+        return ''
+    if f < 10.0:
+        return f'{f:.4f} {curr}'
+    return f'{f:.2f} {curr}'
+
 # Current year:
 cur_year: str | None = None
 
@@ -680,7 +688,7 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                 if UseMarketDataSubscription:
                     gr = await getGreeks(ib, ct) # XXX
                 (theta, dte, undl_price) = await getThetaDTE(pi, ib)
-                undl_price_ = f'{undl_price:.2f} {curr}' if undl_price is not None else ''
+                undl_price_ = format_float(undl_price, curr)
                 ITM = 'Yes' if isITM(ct, undl_price) else ''
                 if UseMarketDataSubscription and gr is not None:
                     iv = gr.impliedVol * 100.0 if gr.impliedVol is not None else ''
@@ -691,7 +699,7 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                             logger.warning(
                                 f'Adding {ct.symbol} with price {gr.undPrice:.4f} {curr}.')
                             MarketPrices[ct.symbol] = gr.undPrice
-                        undl_price_ = f'{gr.undPrice:.4f} {curr}'
+                        undl_price_ = format_float(gr.undPrice, curr)
                 row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_, ITM])
                 if UseMarketDataSubscription and gr is not None:
                     row.extend([f'{iv:.1f} %', f'{delta:.1f}',
@@ -716,7 +724,7 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             for undl in sorted(summe_undl.keys()):
                 for (curr, values) in summe_undl[undl].items():
                     undl_price = await getStockMarketPrice(undl, None, ib)
-                    undl_price_ = f'{undl_price:.2f} {curr}' if undl_price is not None else ''
+                    undl_price_ = format_float(undl_price, curr)
                     add_summary(f'total {undl}', values, curr, show_options_details,
                         show_prices, table, undl_price_)
             table.add_section()
