@@ -381,6 +381,16 @@ async def getMarketPrice(ib: IB, contract: Contract) -> float | None:
     warn_once(logger, f'Not getting market price for {contract.symbol}.')
     return None
 
+# Format a float output, smaller numbers get 4 decimals:
+def format_float(f: float | None, curr: str) -> str:
+    if f is None:
+        return ''
+    if f < 10.0:
+        return f'{f:.4f} {curr}'
+    if f < 1000.0:
+        return f'{f:.2f} {curr}'
+    return f'{f:.0f} {curr}'
+
 currency_prices: dict[str, float] = {}
 
 async def setupForex(ib: IB) -> None:
@@ -393,8 +403,8 @@ async def setupForex(ib: IB) -> None:
         marketPrice = await getMarketPrice(ib, forex_)
         if marketPrice is not None:
             currency_prices[pair] = marketPrice
-            #logger.info(f'Adding forex conversion {pair}USD = {marketPrice:.4f}.')
-            logger.warning(f'Adding forex conversion {pair}USD = {marketPrice:.4f}.')
+            s = format_float(marketPrice, pair)
+            logger.warning(f'Adding forex conversion {pair}USD = {s}.')
 
 # Convert currency name into short currency symbol:
 currency_conversion = {
@@ -510,16 +520,6 @@ def getPosition(pi: PortfolioItem) -> str:
 # Return strike price as string:
 def getStrike(contract: Contract) -> str:
     return strip_decimal_zero(f'{contract.strike}')
-
-# Format a float output, smaller numbers get 4 decimals:
-def format_float(f: float | None, curr: str) -> str:
-    if f is None:
-        return ''
-    if f < 10.0:
-        return f'{f:.4f} {curr}'
-    if f < 1000.0:
-        return f'{f:.2f} {curr}'
-    return f'{f:.0f} {curr}'
 
 # Current year:
 cur_year: str | None = None
@@ -698,8 +698,8 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                     if not undl_price_ and gr.undPrice is not None:
                         # Only add if not yet available:
                         if MarketPrices.get(ct.symbol) is None:
-                            logger.warning(
-                                f'Adding {ct.symbol} with price {gr.undPrice:.4f} {curr}.')
+                            s = format_float(gr.undPrice, curr)
+                            logger.warning(f'Adding {ct.symbol} with price {s}.')
                             MarketPrices[ct.symbol] = gr.undPrice
                         undl_price_ = format_float(gr.undPrice, curr)
                 row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_, ITM])
@@ -716,26 +716,27 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
                 accumulate_values(summe_exp[exp], [costbasis, pi.marketValue, theta], curr)
             accumulate_values(summe, [costbasis, pi.marketValue, theta], curr)
             table.add_row(*row)
-        table.add_section()
-        for (curr, values) in summe.items():
-            add_summary(f'total {curr}', values, curr,
-                show_options_details, show_prices, table, '')
         if show_options_details:
+            # add summary lines by expiration date
             table.add_section()
+            for exp in sorted(summe_exp.keys()):
+                for (curr, values) in summe_exp[exp].items():
+                    # XXX should the expiration output be shortened?
+                    add_summary(f'total {exp}', values, curr, show_options_details,
+                        show_prices, table, '')
             # add summary lines per underlying
+            table.add_section()
             for undl in sorted(summe_undl.keys()):
                 for (curr, values) in summe_undl[undl].items():
                     undl_price = await getStockMarketPrice(undl, None, ib)
                     undl_price_ = format_float(undl_price, curr)
                     add_summary(f'total {undl}', values, curr, show_options_details,
                         show_prices, table, undl_price_)
-            table.add_section()
-            # add summary lines by expiration date
-            for exp in sorted(summe_exp.keys()):
-                for (curr, values) in summe_exp[exp].items():
-                    # XXX should the expiration output be shortened?
-                    add_summary(f'total {exp}', values, curr, show_options_details,
-                        show_prices, table, '')
+        # summary per invested currency
+        table.add_section()
+        for (curr, values) in summe.items():
+            add_summary(f'total {curr}', values, curr,
+                show_options_details, show_prices, table, '')
         console.print(Panel(table))
 
 # Output list of options which expire in less than 'dte' days:
@@ -773,7 +774,8 @@ async def ShowITM(ib: IB, accounts: list[str], portfolio: list[PortfolioItem]) -
         print(f'List all In The Money (ITM) options for account {account}:')
         for (p, undl_price) in pf:
             curr = get_currency_symbol(p.contract.currency)
-            print(f'{getPosition(p)} {getName(p.contract)} with price {undl_price:.2f} {curr}')
+            s = format_float(undl_price, curr)
+            print(f'{getPosition(p)} {getName(p.contract)} with underlying price {s}')
         print()
 
 # If all short puts get assigned, what amount of cash (notional vlaue) would be needed
@@ -799,7 +801,7 @@ def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> No
                 continue
             # XXX Show also needed cash as percentage of all available cash:
             #cash_percent = str(round(-summe[0] * 100.0 / all_cash)) + '%'
-            summe_str = print_data(-summe[0]) + curr
+            summe_str = format_float(-summe[0], curr)
             print(f'Cash needed if all short puts get assigned for account {account}: {summe_str}')
         print()
 
@@ -1023,27 +1025,7 @@ async def main(argv: list[str]) -> None:
     #calc = ib.calculateOptionPrice(option, volatility=0.14, underPrice=525)
     #print(calc)
 
-    #ib.reqMarketDataType(4)
-    #spx = Stock('IBIT', 'SMART', currency='USD')
-    #spx = Stock('IBIT', 'AMEX', currency='USD')
-    #spx = Stock('IBIT', 'AMEX', currency='USD', primaryExchange='AMEX')
-    #await ib.qualifyContractsAsync(spx)
-    #ib.reqMktData(spx, "", False, False)
-    #ticker = ib.ticker(spx)
-    #print(ticker)
-    #await asyncio.sleep(2)
-    #print(ticker)
-    #print(ticker.marketPrice())
-
-    #ib.reqMarketDataType(4)
     #spx = Index('SPX', 'CBOE')
-    #await ib.qualifyContractsAsync(spx)
-    #ib.reqMktData(spx, "", False, False)
-    #ticker = ib.ticker(spx)
-    #print(ticker)
-    #await asyncio.sleep(2)
-    #print(ticker)
-    #print(ticker.marketPrice())
 
     #[ticker] = await ib.reqTickersAsync(spx)
     #spxValue = ticker.marketPrice()
