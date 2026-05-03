@@ -212,7 +212,7 @@ async def __market_data_streaming_handler__(ib: IB, contract: Contract, generic_
     return ticker
 
 #api_response_wait_time: int = 60
-api_response_wait_time: int = 15
+api_response_wait_time: int = 10
 #default_order_exchange: str = 'SMART'
 default_order_exchange: str = 'AMEX'
 
@@ -982,6 +982,7 @@ async def safe_connect(host: str, port: int, client_id: int, readonly: bool, acc
 
 async def main(argv: list[str]) -> None:
     global verbose, DoNotShowCurrentYear, ShowYearWithTwoDigits, cur_year
+    global UseMarketDataSubscription, delayed_market_data
 
     locale.setlocale(locale.LC_ALL, '')
     #locale.setlocale(locale.LC_ALL, 'de_DE')
@@ -1003,8 +1004,8 @@ async def main(argv: list[str]) -> None:
     else:
         verbose = args.verbose
     if args.use_market_data:
-        global UseMarketDataSubscription
         UseMarketDataSubscription = True
+        delayed_market_data = False
 
     #config = readConfig('ib-info.ini')
 
