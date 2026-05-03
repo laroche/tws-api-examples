@@ -94,6 +94,11 @@ ShowYearWithTwoDigits: bool = False
 # Do not show current year for expiration dates:
 DoNotShowCurrentYear: bool = False
 
+# Show a red margin as warning above this margin level:
+MarginRed = 60.0
+# Show a yellow margin as warning above this margin level:
+MarginYellow = 30.0
+
 # Futures and Futures-Options that are used for currency hedging
 # and should be displayed within an extra overview page:
 CURRENCY_SYMBOLS = {'EUR', 'M6E'}
@@ -106,8 +111,8 @@ def warn_once(mylogger: logging.Logger, msg: str) -> None:
     mylogger.warning(msg)
 
 # Turn off some of the more annoying logging output from ib_async:
+#logging.getLogger('ib_async.wrapper').setLevel(logging.CRITICAL)
 #logging.getLogger('ib_async.ib').setLevel(logging.ERROR)
-logging.getLogger('ib_async.wrapper').setLevel(logging.CRITICAL)
 
 # Many subscriptions of market data are only available within the
 # TWS, but not for the (python) API. So by default, we set
@@ -201,11 +206,13 @@ async def __market_data_streaming_handler__(ib: IB, contract: Contract, generic_
             contract = qualified[0]
     if not contract.conId:
         raise ValueError(f"Contract {contract} can't be qualified because no 'conId' value exists.")
+    # XXX maybe add snapshot=True or ib.cancelMktData(contract)
     ticker = ib.reqMktData(contract, genericTickList=generic_tick_list)
     await handler(ticker)
     return ticker
 
-api_response_wait_time: int = 60
+#api_response_wait_time: int = 60
+api_response_wait_time: int = 15
 #default_order_exchange: str = 'SMART'
 default_order_exchange: str = 'AMEX'
 
@@ -290,7 +297,7 @@ async def get_ticker_for_contract(ib: IB, contract: Contract, generic_tick_list:
         results = await asyncio.gather(
             asyncio.gather(*required_tasks),
             asyncio.gather(
-                *optional_tasks, return_exceptions=False
+                *optional_tasks, return_exceptions=False # XXX Change this to True?
             ),  # Don't raise exceptions here for optional
         )
         required_results = results[0]
@@ -349,10 +356,10 @@ async def getGreeks(ib: IB, contract: Contract) -> OptionComputation | None:
             logger.warning(
                 f'More than one qualified contract: {contract.symbol} {len(qualified)}.')
         contract = qualified[0]
-        ticker = ib.reqMktData(contract, snapshot=True)
+        ticker = ib.reqMktData(contract, snapshot=True) #, genericTickList='83')
         if ticker is not None and await __wait_for_greeks__(ticker) is True:
             return ticker.modelGreeks
-    warn_once(logger, f'Not getting market price for {contract.symbol}.')
+    warn_once(logger, f'Not getting market price (greeks) for {contract.symbol}.')
     return None
     #if ticker.askGreeks is not None and ticker.askGreeks.delta is not None:
     #    print('askGreeks:')
@@ -416,8 +423,8 @@ def get_currency_symbol(curr: str) -> str:
 
 def print_data(value: float) -> str:
     #if value >= 980000:
-    #    return locale.format_string('%d', round(value / 1000), grouping=True) + 'T'
-    return locale.format_string('%d', round(value), grouping=True)
+    #    return locale.format_string('%d', int(round(value / 1000)), grouping=True) + 'T'
+    return locale.format_string('%d', int(round(value)), grouping=True)
 
 # Debugging output of accountSummary:
 def printAccountSummary(accountSummary: list[AccountValue]) -> None:
@@ -428,10 +435,10 @@ def printAccountSummary(accountSummary: list[AccountValue]) -> None:
 
 # Extract key data from accountSummary:
 def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -> list[tuple[str,
-    str, str, str, str]]:
+    str, float, str, str, str]]:
     ret = []
     for account in accounts:
-        (nav, nav_str, cash, cash_str, margin) = (0.0, '', 0.0, '', '')
+        (nav, nav_str, cash, cash_str, margin, margin_str) = (0.0, '0', 0.0, '0', 0.0, '0')
         for p in accountSummary:
             if p.account != account:
                 continue
@@ -439,13 +446,13 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
                 cash = float(p.value)
                 cash_str = print_data(cash) + get_currency_symbol(p.currency)
             elif p.tag == 'Cushion':
-                m = (1.0 - float(p.value)) * 100.0
-                margin = f'{m:.1f}%'
+                margin = (1.0 - float(p.value)) * 100.0
+                margin_str = f'{margin:.1f}%'
             elif p.tag == 'NetLiquidation':
                 nav = float(p.value)
                 nav_str = print_data(nav) + get_currency_symbol(p.currency)
         cash_percent = str(round(cash * 100.0 / nav)) + '%' if nav > 0.0 else ''
-        ret.append((account, nav_str, margin, cash_str, cash_percent))
+        ret.append((account, nav_str, margin, margin_str, cash_str, cash_percent))
     return ret
 
 # Display key data from accountSummary:
@@ -464,12 +471,20 @@ def showAccountSummary(console: Console, accounts: list[str],
     #table.add_column('US-T: 120 T€ (7%)')
     #table.add_column('Sold Options: -100(12000) (0,05%)')
     #table.add_column('Stocks: 400 T€ (20%)')
-    for (account, nav, margin, cash, cash_percent) in getAccountDetails(accounts, accountSummary):
+    accountDetails = getAccountDetails(accounts, accountSummary)
+    for (account, nav, margin, margin_str, cash, cash_percent) in accountDetails:
         # XXX add info on time of last update
         if account == 'All':
             table.add_section()
-        table.add_row(f'{account}', f'{nav}', f'{margin}', f'{cash} ({cash_percent})')
+        if margin >= MarginRed:
+            margin_str = f'[bold red]{margin_str}[/]'
+        elif margin >= MarginYellow:
+            margin_str = f'[yellow]{margin_str}[/]'
+        table.add_row(f'{account}', f'{nav}', margin_str, f'{cash} ({cash_percent})')
     console.print(Panel(table))
+    for (account, nav, margin, margin_str, cash, cash_percent) in accountDetails:
+        if margin > MarginRed:
+            console.print(f"[bold red]Warning: Account {account} uses margin of {margin_str}.[/]")
 
 # Store market price of instruments into a dictionary:
 MarketPrices: dict[str, float] = {}
@@ -479,7 +494,8 @@ def collectStockMarketPrices(portfolio: list[PortfolioItem]) -> None:
         # XXX future prices should also get added
         if isinstance(pi.contract, Stock):
             # XXX check if different values exist?
-            MarketPrices[pi.contract.localSymbol] = pi.marketPrice
+            if pi.marketPrice is not None: # XXX Is this needed?
+                MarketPrices[pi.contract.localSymbol] = pi.marketPrice
 
 async def getStockMarketPrice(symbol: str, contract: Contract | None, ib: IB) -> float | None:
     MarketPrice = MarketPrices.get(symbol)
@@ -499,8 +515,8 @@ async def getStockMarketPrice(symbol: str, contract: Contract | None, ib: IB) ->
     # XXX ticker = await get_ticker_for_stock(ib, symbol, 'AMEX', 'AMEX')
     # XXX MarketPrice = ticker.marketPrice()
     # XXX support SMART or other/better defaults:
-    contract = Stock(symbol, 'AMEX', currency='USD', primaryExchange='AMEX')
-    #contract = Stock(symbol, 'SMART', currency='USD', primaryExchange='AMEX')
+    #contract = Stock(symbol, 'AMEX', currency='USD', primaryExchange='AMEX')
+    contract = Stock(symbol, 'SMART', currency='USD')
     MarketPrice = await getMarketPrice(ib, contract)
     if MarketPrice is None:
         warn_once(logger,
@@ -512,6 +528,7 @@ async def getStockMarketPrice(symbol: str, contract: Contract | None, ib: IB) ->
 # Strip ".0" at end of string:
 def strip_decimal_zero(value: str) -> str:
     return value[:-2] if value.endswith('.0') else value
+    #return f'{float(value):g}'
 
 # Return position size as string:
 def getPosition(pi: PortfolioItem) -> str:
@@ -541,17 +558,20 @@ def getName(contract: Contract) -> str:
 #@lru_cache(maxsize=1024)
 def getDTE(contract: Contract) -> int:
     expiration = contract.lastTradeDateOrContractMonth
-    if len(expiration) != 8:
-        # XXX Does this happen? Should we then find the date of
-        # the monthly expiration as extra search?
-        #dte = datetime.datetime.strptime(expiration, '%Y%m')
-        logger.error('Wrong expiration date: %s (length != 8).', expiration)
-        raise ValueError(f'Expiration date ({expiration}) has not length of 8.')
-    d = datetime.datetime.strptime(expiration, '%Y%m%d')
+    if len(expiration) == 8:
+        d = datetime.datetime.strptime(expiration, '%Y%m%d')
+    elif len(expiration) == 6:
+        # XXX Should we then find the date of the monthly expiration as extra search?
+        logger.warning(f'Monthly expiration date without exact day: {expiration}.')
+        # 3rd friday of the month can be from 15 to 21, so we take 18 as a guess:
+        d = datetime.datetime.strptime(expiration + '18', '%Y%m%d')
+    else:
+        logger.error('Wrong expiration date: %s.', expiration)
+        raise ValueError(f'Expiration date ({expiration}) is unknown.')
     dte = d.date() - datetime.date.today()
     return dte.days
 
-# Return daily theta, DTE and underlying_price:
+# Return average daily theta decay, DTE and underlying_price:
 async def getThetaDTE(pi: PortfolioItem, ib: IB) -> tuple[float, int, float | None]:
     ct = pi.contract
     dte = getDTE(ct)
@@ -563,8 +583,8 @@ async def getThetaDTE(pi: PortfolioItem, ib: IB) -> tuple[float, int, float | No
             value -= (ct.strike - underlying_price) * float(ct.multiplier) * pi.position
         if ct.right == 'C' and underlying_price > ct.strike:
             value -= (underlying_price - ct.strike) * float(ct.multiplier) * pi.position
-    theta = value / (dte + 1) if dte >= 0 else 0.0
-    return (theta, dte, underlying_price)
+    avg_daily_theta_decay = value / (dte + 1) if dte >= 0 else 0.0
+    return (avg_daily_theta_decay, dte, underlying_price)
 
 # Debug output of portfolio data:
 def showPortfolioDebug(portfolio: list[PortfolioItem]) -> None:
@@ -746,7 +766,9 @@ def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: in
         for pi in portfolio:
             if pi.account != account or not isinstance(pi.contract, Option):
                 continue
-            if getDTE(pi.contract) <= dte:
+            # This might also show already expired options.
+            #if getDTE(pi.contract) <= dte:
+            if 0 <= getDTE(pi.contract) <= dte:
                 pf.append(pi)
         if not pf:
             continue
@@ -837,7 +859,8 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
 
     collectStockMarketPrices(portfolio)
     if UseMarketDataSubscription:
-        await setupForex(ib)
+        # XXX await setupForex(ib)
+        pass
     await showPortfolio(ib, console, accounts, portfolio)
     await showPortfolio(ib, console, accounts, portfolio, non_options=True)
     await showPortfolio(ib, console, accounts, portfolio, future_options=True)
@@ -892,8 +915,9 @@ The client id must be unique per connection/client:
 - client_id 1 (configurable) is getting transactions from other client_ids, but not TWS.
 
 Examples:
-  python ib-info.py --host 127.0.0.1 --port 7496 --short-expire-format
+  python ib-info.py --host 127.0.0.1 --port 7496 --use-market-data
   python ib-info.py --host 127.0.0.1 --port 7496 --account=U12345
+  python ib-info.py --host 127.0.0.1 --port 7496 --short-expire-format
   python ib-info.py --host 127.0.0.1 --port 7496 --debug
         ''')
     # Connection parameters
@@ -914,6 +938,9 @@ Examples:
     parser.add_argument('--readonly', '-r',
         action='store_true',
         help='Read-only mode (default: False)')
+    parser.add_argument('--use-market-data', '-m',
+        action='store_true',
+        help='Use market data from IBKR (default: False)')
     # Output formatting
     parser.add_argument('--short-expire-format',
         action='store_true',
@@ -975,6 +1002,9 @@ async def main(argv: list[str]) -> None:
         verbose = 0
     else:
         verbose = args.verbose
+    if args.use_market_data:
+        global UseMarketDataSubscription
+        UseMarketDataSubscription = True
 
     #config = readConfig('ib-info.ini')
 
@@ -1009,7 +1039,8 @@ async def main(argv: list[str]) -> None:
     MarketDataType = 4 if delayed_market_data else 1
     ib.reqMarketDataType(MarketDataType)
 
-    await showAccounts(ib, console)
+    try:
+        await showAccounts(ib, console)
 
     #tasks = []
     #for symbol in symbols:
@@ -1065,7 +1096,8 @@ async def main(argv: list[str]) -> None:
 
     # ticker.askGreeks ticker.bidGreeks ticker.lastGreeks ticker.modelGreeks
 
-    ib.disconnect()
+    finally:
+        ib.disconnect()
 
 
 if __name__ == '__main__':
