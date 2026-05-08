@@ -991,7 +991,11 @@ async def main(argv: list[str]) -> None:
     global verbose, DoNotShowCurrentYear, ShowYearWithTwoDigits, cur_year
     global UseMarketDataSubscription, delayed_market_data
 
-    locale.setlocale(locale.LC_ALL, '')
+    try:
+        locale.setlocale(locale.LC_ALL, '')
+    except locale.Error:
+        locale.setlocale(locale.LC_ALL, 'C')
+        logger.warning("Failed to set system locale. Falling back to 'C'.")
     #locale.setlocale(locale.LC_ALL, 'de_DE')
     #print(locale.getlocale())
     #for key, value in locale.localeconv().items():
