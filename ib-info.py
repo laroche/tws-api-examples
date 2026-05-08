@@ -56,12 +56,13 @@
 # - allow different sorting strategies for overview pages
 # - Should large numbers use "." as thousand separator?
 # - Output time of last data update from TWS into overview pages.
+# - Allow refresh of portfolio overview data.
 # - Add cash-like symbols to amount of optional cash: SGOV/BIL, US-T-Bills, TLT...
 # - Warn about negative cash values.
 # - Add automatic trading and advise on trading strategies.
 # - If TWS is suspended (due to mobile app started), this script times out and hangs.
 # - How to allow for re-connects?
-# - Should disconnect be done within a finally clause in case of errors?
+# - Is a disconnect done properly for all error cases?
 # - add sqlite database for historical data?
 #
 # pylint: disable=W0511,R0912,C0103,C0114,C0115,C0116
@@ -152,7 +153,6 @@ delayed_market_data = True
 #        cfg.show_year_with_two_digits = bool(args.two_digit_years)
 #        cfg.do_not_show_current_year = bool(args.short_expire_format)
 #        if cfg.do_not_show_current_year:
-#            import datetime
 #            cfg.current_year = datetime.date.today().strftime('%Y')
 #        return cfg
 #config = IBConfig()
@@ -554,6 +554,14 @@ def getName(contract: Contract) -> str:
             expiration = expiration[4:]
     return f'{contract.symbol} {contract.right}{getStrike(contract)} {expiration}'
 
+def get_third_friday(yearmonth: str) -> str:
+    """Return the day number of the third Friday in a given month and year."""
+    first_day = datetime.date(int(yearmonth[:4]), int(yearmonth[4:]), 1)
+    days_until_friday = (4 - first_day.weekday()) % 7
+    third_friday = first_day + datetime.timedelta(days=days_until_friday + 14)
+    return f'{third_friday.day:02d}'
+    # return f'{pandas.tseries.offsets.Friday(3):02d}'
+
 # Return DTE (Days Til Expiration) for an option/future:
 #@lru_cache(maxsize=1024)
 def getDTE(contract: Contract) -> int:
@@ -561,10 +569,9 @@ def getDTE(contract: Contract) -> int:
     if len(expiration) == 8:
         d = datetime.datetime.strptime(expiration, '%Y%m%d')
     elif len(expiration) == 6:
-        # XXX Should we then find the date of the monthly expiration as extra search?
         logger.warning(f'Monthly expiration date without exact day: {expiration}.')
-        # 3rd friday of the month can be from 15 to 21, so we take 18 as a guess:
-        d = datetime.datetime.strptime(expiration + '18', '%Y%m%d')
+        third_friday = get_third_friday(expiration)
+        d = datetime.datetime.strptime(expiration + third_friday, '%Y%m%d')
     else:
         logger.error('Wrong expiration date: %s.', expiration)
         raise ValueError(f'Expiration date ({expiration}) is unknown.')
