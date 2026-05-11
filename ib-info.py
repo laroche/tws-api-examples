@@ -415,8 +415,7 @@ async def setupForex(ib: IB) -> None:
 
 # Convert currency name into short currency symbol:
 currency_conversion = {
-    'EUR': '€',
-    'USD': '$'}
+    'EUR': '€', 'USD': '$', 'GBP': '£', 'JPY': '¥'}
 
 def get_currency_symbol(curr: str) -> str:
     return currency_conversion.get(curr, curr)
@@ -570,6 +569,7 @@ def getDTE(contract: Contract) -> int:
         d = datetime.datetime.strptime(expiration, '%Y%m%d')
     elif len(expiration) == 6:
         logger.warning(f'Monthly expiration date without exact day: {expiration}.')
+        # XXX Is it correct to look up the third friday of the month?
         third_friday = get_third_friday(expiration)
         d = datetime.datetime.strptime(expiration + third_friday, '%Y%m%d')
     else:
@@ -856,6 +856,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
         printAccountValues(accountValues)
 
     # To refresh use: reqAccountUpdatesAsync()
+    #portfolio = await ib.portfolioAsync()
     portfolio = ib.portfolio()
     if not portfolio:
         # XXX allow empty portfolio? Check with paper trading...
