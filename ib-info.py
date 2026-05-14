@@ -372,14 +372,13 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
     if show_prices:
         row.extend(['', ''])
     if show_options_details:
+        # XXX first value to show DTE for some outputs
         row.extend(['', f'{sum_theta:.2f} {curr}', underlying_price, ''])
     table.add_row(*row)
 
 async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     cache = {}
-    # XXX Find out needed_currencies by inspecting the portfolio.
-    #needed_currencies = ['EUR']
-    needed_currencies = []
+    needed_currencies = sorted(list({p.contract.currency for p in portfolio if p.contract.currency != 'USD'}))
     # collect existing stock market prices:
     for pi in portfolio:
         # XXX future prices should also get added
@@ -558,6 +557,7 @@ def showPortfolio(console: Console, accounts: list[str],
             for exp in sorted(summe_exp.keys()):
                 for (curr, values) in summe_exp[exp].items():
                     # XXX should the expiration output be shortened?
+                    # XXX add DTE output
                     add_summary(f'total {exp}', values, curr, show_options_details,
                         show_prices, table, '')
             # add summary lines per underlying
