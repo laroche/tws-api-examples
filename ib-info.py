@@ -69,9 +69,7 @@
 #
 
 #from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
 from functools import lru_cache
-from enum import Enum
 import sys
 import os
 import locale
@@ -79,8 +77,8 @@ import logging
 import datetime
 import argparse
 import asyncio
-from ib_async import (IB, FuturesOption, Option, OptionComputation, AccountValue,
-    PortfolioItem, Contract, Stock, Ticker, Index, Forex, util)
+from ib_async import (IB, FuturesOption, Option, AccountValue,
+    PortfolioItem, Contract, Stock, Forex, util)
 
 from rich.console import Console
 from rich.panel import Panel
@@ -170,224 +168,6 @@ delayed_market_data = True
 #    log_filename = config.get('logging', 'filename')
 #    return config
 
-# XXX Maybe compaction not needed for real parallel requests:
-async def qualify_contracts(ib: IB, *contracts: Contract) -> list[Contract]:
-    results = await ib.qualifyContractsAsync(*contracts)
-    qualified: list[Contract] = []
-    for r in results:
-        if r is None:
-            continue
-        if isinstance(r, list):
-            qualified.extend([c for c in r if c is not None])
-        else:
-            qualified.append(r)
-    return qualified
-
-async def __market_data_streaming_handler__(ib: IB, contract: Contract, generic_tick_list: str,
-    handler: Callable[[Ticker], Awaitable[Any]]) -> Ticker:
-    """
-    Handles the streaming of market data for a given contract.
-
-    This asynchronous method qualifies the contract, requests market data,
-    and processes the data using the provided handler. Once the handler
-    completes, the market data request is canceled.
-
-    Args:
-        contract (Contract): The contract for which market data is requested.
-        handler (Callable[[Ticker], Awaitable[None]]): An asynchronous function
-            that processes the received market data ticker.
-
-    Returns:
-        Ticker: The market data ticker for the given contract.
-    """
-    if not contract.conId:
-        qualified = await qualify_contracts(ib, contract)
-        if qualified:
-            contract = qualified[0]
-    if not contract.conId:
-        raise ValueError(f"Contract {contract} can't be qualified because no 'conId' value exists.")
-    # XXX maybe add snapshot=True or ib.cancelMktData(contract)
-    ticker = ib.reqMktData(contract, genericTickList=generic_tick_list)
-    await handler(ticker)
-    return ticker
-
-#api_response_wait_time: int = 60
-api_response_wait_time: int = 10
-#default_order_exchange: str = 'SMART'
-default_order_exchange: str = 'AMEX'
-
-async def __ticker_wait_for_condition__(ticker: Ticker, condition: Callable[[Ticker], bool],
-                                        timeout: float) -> bool:
-    event = asyncio.Event()
-
-    def onTicker(ticker: Ticker) -> None:
-        if condition(ticker):
-            event.set()
-
-    ticker.updateEvent += onTicker
-    try:
-        await asyncio.wait_for(event.wait(), timeout=timeout)
-        return True
-    except asyncio.TimeoutError:
-        return False
-    finally:
-        ticker.updateEvent -= onTicker
-
-async def __wait_for_midpoint_price__(ticker: Ticker) -> bool:
-    return await __ticker_wait_for_condition__(ticker, lambda t: not util.isNan(t.midpoint()),
-        api_response_wait_time)
-
-async def __wait_for_market_price__(ticker: Ticker) -> bool:
-    return await __ticker_wait_for_condition__(ticker, lambda t: not util.isNan(t.marketPrice()),
-        api_response_wait_time)
-
-async def __wait_for_greeks__(ticker: Ticker) -> bool:
-    return await __ticker_wait_for_condition__(ticker,
-        lambda t: not (t.modelGreeks is None or t.modelGreeks.delta is None or
-        util.isNan(t.modelGreeks.delta)), api_response_wait_time)
-
-async def __wait_for_open_interest__(ticker: Ticker) -> bool:
-    def open_interest_is_not_ready(ticker: Ticker) -> bool:
-        if not ticker.contract:
-            return False
-        if ticker.contract.right.startswith('P'):
-            return util.isNan(ticker.putOpenInterest)
-        else:
-            return util.isNan(ticker.callOpenInterest)
-
-    return await __ticker_wait_for_condition__(ticker, lambda t: not open_interest_is_not_ready(t),
-        api_response_wait_time)
-
-class RequiredFieldValidationError(Exception):
-    def __init__(self, message: str) -> None:
-        self.message = message
-        super().__init__(self.message)
-
-class TickerField(Enum):
-    MIDPOINT = 'midpoint'
-    MARKET_PRICE = 'market_price'
-    GREEKS = 'greeks'
-    OPEN_INTEREST = 'open_interest'
-
-def __ticker_field_handler__(ticker_field: TickerField) -> Callable[[Ticker], Awaitable[bool]]:
-    if ticker_field == TickerField.MIDPOINT:
-        return __wait_for_midpoint_price__
-    if ticker_field == TickerField.MARKET_PRICE:
-        return __wait_for_market_price__
-    if ticker_field == TickerField.GREEKS:
-        return __wait_for_greeks__
-    if ticker_field == TickerField.OPEN_INTEREST:
-        return __wait_for_open_interest__
-
-async def get_ticker_for_contract(ib: IB, contract: Contract, generic_tick_list: str = '',
-    required_fields: list[TickerField] = [TickerField.MARKET_PRICE],
-    optional_fields: list[TickerField] = [TickerField.MIDPOINT]) -> Ticker:
-    required_handlers = [
-        (field, __ticker_field_handler__(field)) for field in required_fields
-    ]
-    optional_handlers = [
-        (field, __ticker_field_handler__(field)) for field in optional_fields
-    ]
-
-    async def ticker_handler(ticker: Ticker) -> None:
-        required_tasks = [handler(ticker) for _, handler in required_handlers]
-        optional_tasks = [handler(ticker) for _, handler in optional_handlers]
-
-        # Gather results, allowing optional tasks to potentially fail (timeout)
-        results = await asyncio.gather(
-            asyncio.gather(*required_tasks),
-            asyncio.gather(
-                *optional_tasks, return_exceptions=False # XXX Change this to True?
-            ),  # Don't raise exceptions here for optional
-        )
-        required_results = results[0]
-        optional_results = results[1]
-
-        # Check required results
-        failed_required_fields = [
-            field.name
-            for i, (field, _) in enumerate(required_handlers)
-            if not required_results[i]
-        ]
-        if failed_required_fields:
-            raise RequiredFieldValidationError(
-                f"Required fields timed out for {contract.localSymbol}: {', '.join(failed_required_fields)}"
-            )
-
-        # Log warnings for optional results that timed out
-        failed_optional_fields = [
-            field.name
-            for i, (field, _) in enumerate(optional_handlers)
-            if not optional_results[i]
-        ]
-        if failed_optional_fields:
-            logger.warning(
-                f"Optional fields timed out for {contract.localSymbol}: {', '.join(failed_optional_fields)}"
-            )
-
-    return await __market_data_streaming_handler__(ib, contract, generic_tick_list,
-        lambda ticker: ticker_handler(ticker))
-
-async def get_ticker_for_stock(ib: IB, symbol: str, primary_exchange: str,
-    order_exchange: str | None = None, generic_tick_list: str = '',
-    required_fields: list[TickerField] = [TickerField.MARKET_PRICE],
-    optional_fields: list[TickerField] = [TickerField.MIDPOINT]) -> Ticker:
-    stock = Stock(symbol, order_exchange or default_order_exchange,
-        currency='USD', primaryExchange=primary_exchange)
-    qualified = await qualify_contracts(ib, stock)
-    contract: Contract = qualified[0] if qualified else stock
-
-    if not contract.conId:
-        # Some underlyings (e.g. SPX) are indices, not stocks.
-        index_exchange = primary_exchange or 'CBOE'
-        index_contract = Index(symbol, index_exchange, 'USD')
-        qualified_index = await qualify_contracts(ib, index_contract)
-        if qualified_index:
-            contract = qualified_index[0]
-
-    return await get_ticker_for_contract(ib, contract, generic_tick_list,
-        required_fields, optional_fields)
-
-async def getGreeks(ib: IB, contract: Contract) -> OptionComputation | None:
-    # XXX check contract.symbol if correct error output:
-    qualified = await qualify_contracts(ib, contract)
-    if qualified:
-        if len(qualified) != 1:
-            logger.warning(
-                f'More than one qualified contract: {contract.symbol} {len(qualified)}.')
-        contract = qualified[0]
-        ticker = ib.reqMktData(contract, snapshot=True) #, genericTickList='83')
-        if ticker is not None and await __wait_for_greeks__(ticker) is True:
-            return ticker.modelGreeks
-    warn_once(logger, f'Not getting market price (greeks) for {contract.symbol}.')
-    return None
-    #if ticker.askGreeks is not None and ticker.askGreeks.delta is not None:
-    #    print('askGreeks:')
-    #    print(ticker.askGreeks)
-    #if ticker.modelGreeks is not None and ticker.modelGreeks.delta is not None:
-    #    print('modelGreeks:')
-    #    print(ticker.modelGreeks)
-    #if ticker.bidGreeks is not None and ticker.bidGreeks.delta is not None:
-    #    print('bidGreeks:')
-    #    print(ticker.bidGreeks)
-    #if ticker.lastGreeks is not None and ticker.lastGreeks.delta is not None:
-    #    print('lastGreeks:')
-    #    print(ticker.lastGreeks)
-
-async def getMarketPrice(ib: IB, contract: Contract) -> float | None:
-    # XXX check contract.symbol if correct error output:
-    qualified = await qualify_contracts(ib, contract)
-    if qualified:
-        if len(qualified) != 1:
-            logger.warning(
-                f'More than one qualified contract: {contract.symbol} {len(qualified)}.')
-        contract = qualified[0]
-        ticker = ib.reqMktData(contract, snapshot=True)
-        if ticker is not None and await __wait_for_market_price__(ticker) is True:
-            return ticker.marketPrice()
-    warn_once(logger, f'Not getting market price for {contract.symbol}.')
-    return None
-
 # Format a float output, smaller numbers get 4 decimals:
 def format_float(f: float | None, curr: str) -> str:
     if f is None:
@@ -397,21 +177,6 @@ def format_float(f: float | None, curr: str) -> str:
     if f < 1000.0:
         return f'{f:.2f} {curr}'
     return f'{f:.0f} {curr}'
-
-currency_prices: dict[str, float] = {}
-
-async def setupForex(ib: IB) -> None:
-    # XXX Find out needed_currencies by inspecting the portfolio.
-    needed_currencies = ['EUR']
-    # XXX Query for all contracts in parallel:
-    #contracts = [ Forex(pair) for pair in needed_currencies ]
-    for pair in needed_currencies:
-        forex_ = Forex(pair + 'USD')
-        marketPrice = await getMarketPrice(ib, forex_)
-        if marketPrice is not None:
-            currency_prices[pair] = marketPrice
-            s = format_float(marketPrice, pair)
-            logger.warning(f'Adding forex conversion {pair}USD = {s}.')
 
 # Convert currency name into short currency symbol:
 currency_conversion = {
@@ -485,44 +250,18 @@ def showAccountSummary(console: Console, accounts: list[str],
         if margin > MarginRed:
             console.print(f"[bold red]Warning: Account {account} uses margin of {margin_str}.[/]")
 
-# Store market price of instruments into a dictionary:
-MarketPrices: dict[str, float] = {}
+# Store market price and greeks of instruments into a dictionary:
+#MarketPrices: dict[str, float] = {}
+data_cache = {}
 
-def collectStockMarketPrices(portfolio: list[PortfolioItem]) -> None:
-    for pi in portfolio:
-        # XXX future prices should also get added
-        if isinstance(pi.contract, Stock):
-            # XXX check if different values exist?
-            if pi.marketPrice is not None: # XXX Is this needed?
-                MarketPrices[pi.contract.localSymbol] = pi.marketPrice
+#currency_prices: dict[str, float] = {}
 
-async def getStockMarketPrice(symbol: str, contract: Contract | None, ib: IB) -> float | None:
-    MarketPrice = MarketPrices.get(symbol)
-    if MarketPrice is not None:
-        return MarketPrice
-    if not UseMarketDataSubscription:
-        warn_once(logger,
-            f'Not getting market price for {symbol}. ITM/theta calculations might be wrong.')
-        return None
-    # Now ask for current online market price:
-    # XXX if isinstance(contract, FuturesOption) or contract is None:
-    if not isinstance(contract, Stock):
-        warn_once(logger,
-            f'Not getting market price for {symbol}. ITM/theta calculations might be wrong.')
-        return None
-    # XXX ticker = await get_ticker_for_stock(ib, symbol, primaryExchange)
-    # XXX ticker = await get_ticker_for_stock(ib, symbol, 'AMEX', 'AMEX')
-    # XXX MarketPrice = ticker.marketPrice()
-    # XXX support SMART or other/better defaults:
-    #contract = Stock(symbol, 'AMEX', currency='USD', primaryExchange='AMEX')
-    contract = Stock(symbol, 'SMART', currency='USD')
-    MarketPrice = await getMarketPrice(ib, contract)
-    if MarketPrice is None:
-        warn_once(logger,
-            f'Not getting market price for {symbol}. ITM/theta calculations might be wrong.')
-    else:
-        MarketPrices[symbol] = MarketPrice
-    return MarketPrice
+def getStockMarketPrice(name: str) -> float | None:
+    if (1, name) in data_cache:
+        return data_cache[(1, name)]
+    warn_once(logger,
+        f'Not getting market price for {name}. ITM/theta calculations might be wrong.')
+    return None
 
 # Strip ".0" at end of string:
 def strip_decimal_zero(value: str) -> str:
@@ -579,11 +318,13 @@ def getDTE(contract: Contract) -> int:
     return dte.days
 
 # Return average daily theta decay, DTE and underlying_price:
-async def getThetaDTE(pi: PortfolioItem, ib: IB) -> tuple[float, int, float | None]:
+def getThetaDTE(pi: PortfolioItem) -> tuple[float, int, float | None]:
     ct = pi.contract
     dte = getDTE(ct)
     value = pi.marketValue # value = intrinsic + extrinsic
-    underlying_price = await getStockMarketPrice(ct.symbol, ct, ib)
+    underlying_price = getStockMarketPrice(ct.symbol)
+    if value is None:
+        return (0.0, dte, underlying_price)
     if underlying_price is not None:
         # subtract intrinsic value
         if ct.right == 'P' and underlying_price < ct.strike:
@@ -634,8 +375,78 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
         row.extend(['', f'{sum_theta:.2f} {curr}', underlying_price, ''])
     table.add_row(*row)
 
+async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
+    cache = {}
+    # XXX Find out needed_currencies by inspecting the portfolio.
+    #needed_currencies = ['EUR']
+    needed_currencies = []
+    # collect existing stock market prices:
+    for pi in portfolio:
+        # XXX future prices should also get added
+        if isinstance(pi.contract, Stock):
+            # XXX check if different values exist?
+            if pi.marketPrice is not None: # XXX Is this needed?
+                name = getName(pi.contract)
+                data_cache[(1, name)] = pi.marketPrice
+                #print('Adding', name, 'with market price', pi.marketPrice)
+    if not UseMarketDataSubscription:
+        return
+    contracts = []
+    for pair in needed_currencies:
+        contracts.append(Forex(pair + 'USD'))
+    for pi in portfolio:
+        ct = pi.contract
+        if isinstance(ct, Option):
+            name = getName(ct)
+            if (2, name) not in cache and (2, name) not in data_cache:
+                cache[(2, name)] = True
+                contracts.append(ct)
+                #if gr.undPrice is not None:
+                #    undl_price_ = format_float(gr.undPrice, curr)
+                #    if (1, ct.symbol) not in data_cache:
+                #        logger.warning(f'Adding {ct.symbol} with price {undl_price_}.')
+                #        data_cache[(1, ct.symbol)] = gr.undPrice
+            underlying = ct.symbol
+            if (1, underlying) not in cache:
+                contract = Stock(underlying, 'SMART', currency='USD')
+                cache[(1, underlying)] = True
+                contracts.append(contract)
+        elif isinstance(ct, FuturesOption):
+            name = getName(ct)
+            if (3, name) not in cache:
+                cache[(3, name)] = True
+                contracts.append(ct)
+            # XXX add underlying info
+    results = await ib.qualifyContractsAsync(*contracts)
+    tickers = await ib.reqTickersAsync(*results)
+    for i in range(len(contracts)):
+        contract = results[i]
+        ticker = tickers[i]
+        if contract is None or ticker is None:
+            continue
+        name = getName(contract)
+        if isinstance(contract, (Stock, Forex)):
+            marketprice = ticker.marketPrice()
+            if util.isNan(marketprice):
+                warn_once(logger, f'Not getting market price for {name}.')
+            else:
+                #print(name, 'has market price', marketprice)
+                data_cache[(1, name)] = marketprice
+                if isinstance(contract, Forex):
+                    pair = name + 'USD'
+                    #currency_prices[pair] = marketprice
+                    s = format_float(marketprice, pair)
+                    logger.warning(f'Adding forex conversion {pair}USD = {s}.')
+        elif isinstance(contract, (FuturesOption, Option)):
+            gr = ticker.modelGreeks
+            if gr is None:
+                warn_once(logger, f'Not getting greeks for {name}.')
+            else:
+                #print(name, 'has delta of', gr.delta)
+                data_cache[(2, name)] = gr
+
 # Output different portfolio views:
-async def showPortfolio(ib: IB, console: Console, accounts: list[str],
+def showPortfolio(console: Console, accounts: list[str],
     portfolio: list[PortfolioItem], non_options: bool = False, future_options: bool = False,
     options: bool = False, currency_options: bool = False) -> None:
     for account in accounts:
@@ -714,21 +525,19 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             if show_options_details:
                 ct = pi.contract
                 gr = None
-                if UseMarketDataSubscription:
-                    gr = await getGreeks(ib, ct) # XXX
-                (theta, dte, undl_price) = await getThetaDTE(pi, ib)
+                if (2, name) in data_cache:
+                    gr = data_cache[(2, name)]
+                (theta, dte, undl_price) = getThetaDTE(pi)
                 undl_price_ = format_float(undl_price, curr)
                 ITM = 'Yes' if isITM(ct, undl_price) else ''
                 if UseMarketDataSubscription and gr is not None:
                     iv = gr.impliedVol * 100.0 if gr.impliedVol is not None else ''
                     delta = gr.delta * 100.0 if gr.delta is not None else ''
                     if not undl_price_ and gr.undPrice is not None:
-                        # Only add if not yet available:
-                        if MarketPrices.get(ct.symbol) is None:
-                            s = format_float(gr.undPrice, curr)
-                            logger.warning(f'Adding {ct.symbol} with price {s}.')
-                            MarketPrices[ct.symbol] = gr.undPrice
                         undl_price_ = format_float(gr.undPrice, curr)
+                        if (1, ct.symbol) not in data_cache:
+                            logger.warning(f'Adding {ct.symbol} with price {undl_price_}.')
+                            data_cache[(1, ct.symbol)] = gr.undPrice
                 row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_, ITM])
                 if UseMarketDataSubscription and gr is not None:
                     row.extend([f'{iv:.1f} %', f'{delta:.1f}',
@@ -755,7 +564,7 @@ async def showPortfolio(ib: IB, console: Console, accounts: list[str],
             table.add_section()
             for undl in sorted(summe_undl.keys()):
                 for (curr, values) in summe_undl[undl].items():
-                    undl_price = await getStockMarketPrice(undl, None, ib)
+                    undl_price = getStockMarketPrice(undl)
                     undl_price_ = format_float(undl_price, curr)
                     add_summary(f'total {undl}', values, curr, show_options_details,
                         show_prices, table, undl_price_)
@@ -786,7 +595,7 @@ def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: in
         print()
 
 # Output list of options which are ITM (In The Money):
-async def ShowITM(ib: IB, accounts: list[str], portfolio: list[PortfolioItem]) -> None:
+def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
         pf = []
         for pi in portfolio:
@@ -794,7 +603,7 @@ async def ShowITM(ib: IB, accounts: list[str], portfolio: list[PortfolioItem]) -
             # XXX Also output ITM Future Options?
             if pi.account != account or not isinstance(ct, Option):
                 continue
-            underlying_price = await getStockMarketPrice(ct.symbol, ct, ib)
+            underlying_price = getStockMarketPrice(ct.symbol)
             if isITM(ct, underlying_price):
                 pf.append((pi, underlying_price))
         if not pf:
@@ -865,19 +674,16 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     if verbose >= 3:
         showPortfolioDebug(portfolio)
 
-    collectStockMarketPrices(portfolio)
-    if UseMarketDataSubscription:
-        # XXX await setupForex(ib)
-        pass
-    await showPortfolio(ib, console, accounts, portfolio)
-    await showPortfolio(ib, console, accounts, portfolio, non_options=True)
-    await showPortfolio(ib, console, accounts, portfolio, future_options=True)
-    await showPortfolio(ib, console, accounts, portfolio, options=True)
+    await getPortfolioData(ib, portfolio)
+    showPortfolio(console, accounts, portfolio)
+    showPortfolio(console, accounts, portfolio, non_options=True)
+    showPortfolio(console, accounts, portfolio, future_options=True)
+    showPortfolio(console, accounts, portfolio, options=True)
     ShowLessThanDTE(accounts, portfolio, 21)
     ShowLessThanDTE(accounts, portfolio, 4)
-    await ShowITM(ib, accounts, portfolio)
+    ShowITM(accounts, portfolio)
     ShowNotionalValue(accounts, portfolio)
-    await showPortfolio(ib, console, accounts, portfolio, currency_options=True)
+    showPortfolio(console, accounts, portfolio, currency_options=True)
 
     # Less information compared to showPortfolio():
     if verbose >= 3:
@@ -1070,12 +876,6 @@ async def main(argv: list[str]) -> None:
     #print(calc)
 
     #spx = Index('SPX', 'CBOE')
-
-    #[ticker] = await ib.reqTickersAsync(spx)
-    #spxValue = ticker.marketPrice()
-    #await asyncio.sleep(2)
-    #print(spxValue)
-    #print(ticker.marketPrice())
 
     #chains = ib.reqSecDefOptParams(spx.symbol, '', spx.secType, spx.conId)
     #util.df(chains)
