@@ -212,7 +212,11 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
                 cash = float(p.value)
                 cash_str = print_data(cash) + get_currency_symbol(p.currency)
             elif p.tag == 'Cushion':
-                margin = (1.0 - float(p.value)) * 100.0
+                # Handle IBKR returning cushion as percentage (e.g., "95.2")
+                cushion_val = float(p.value)
+                if cushion_val > 1.0:
+                    cushion_val /= 100.0
+                margin = (1.0 - cushion_val) * 100.0
                 margin_str = f'{margin:.1f}%'
             elif p.tag == 'NetLiquidation':
                 nav = float(p.value)
@@ -311,6 +315,7 @@ def getDTE(contract: Contract) -> int:
     elif len(expiration) == 6:
         logger.warning(f'Monthly expiration date without exact day: {expiration}.')
         # XXX Is it correct to look up the third friday of the month?
+        # XXX fetch the exact expiration via ib.reqContractDetailsAsync(contract)
         third_friday = get_third_friday(expiration)
         d = datetime.datetime.strptime(expiration + third_friday, '%Y%m%d')
     else:
@@ -332,6 +337,11 @@ def getThetaDTE(pi: PortfolioItem, gr) -> tuple[float, int, float | None]:
         underlying_price = getMarketPrice(ct.symbol, num)
     if value is None:
         return (0.0, dte, underlying_price)
+    # Prefer IB's model theta:
+    #if gr is not None and gr.theta is not None:
+    #    avg_daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
+    #    return (avg_daily_theta_decay, dte, underlying_price)
+    # Compute theta decay ourselves:
     if underlying_price is not None:
         # subtract intrinsic value
         if ct.right == 'P' and underlying_price < ct.strike:
@@ -414,8 +424,10 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         return
     contracts = []
     # add all forex pairs:
+    USD_QUOTE = {'EUR', 'GBP', 'AUD', 'NZD', 'CAD'}
     for pair in needed_currencies:
-        contracts.append(Forex(pair + 'USD'))
+        symbol = f"{pair}USD" if pair in USD_QUOTE else f"USD{pair}"
+        contracts.append(Forex(symbol))
     # add all (future) options to get greeks:
     for pi in portfolio:
         ct = pi.contract
@@ -426,6 +438,8 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                 cache[(num, name)] = True
                 contracts.append(ct)
     # get data from IB:
+    if not contracts:
+        return
     results = await ib.qualifyContractsAsync(*contracts)
     tickers = await ib.reqTickersAsync(*results)
     for i in range(len(contracts)):
@@ -874,6 +888,7 @@ async def main(argv: list[str]) -> None:
     # 4 == delayed frozen
     MarketDataType = 4 if delayed_market_data else 1
     ib.reqMarketDataType(MarketDataType)
+    #await ib.reqMarketDataTypeAsync(MarketDataType)
 
     try:
         await showAccounts(ib, console)
