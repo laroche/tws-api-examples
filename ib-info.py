@@ -33,6 +33,7 @@
 # - Allow translation of output into different languages.
 # - For currency overview futures are not yet included.
 # - Allow for nice/modern config file.
+# - We use local timzone. For DTE calculations we should use exchange timezone?
 # - Add to options output:
 #   - delta, gamma, theta, vega values
 #   - list notional value of all stock option short puts if assigned
@@ -614,7 +615,7 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
             if gr is not None and gr.undPrice is not None:
                 underlying_price = gr.undPrice
             else:
-                underlying_price = getMarketPrice(ct.symbol, num)
+                underlying_price = getMarketPrice(ct.symbol, 1)
             if isITM(ct, underlying_price):
                 pf.append((pi, underlying_price))
         if not pf:
