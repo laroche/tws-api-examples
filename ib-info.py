@@ -10,6 +10,8 @@
 # . venv/bin/activate
 # pip3 install ib_async
 # pip3 install rich
+# ./ib-info.py
+# ./ib-info.py -m
 #
 # Configuration of IB TWS Java memory usage:
 # ~/Jts/tws.vmoptions:
@@ -24,8 +26,9 @@
 # - client_id 0 is getting all transactions, including also TWS.
 # - client_id 1 (configurable) is getting transactions from other client_ids, but not TWS.
 # Even if market data is available for TWS, the API might not get market data
-# as well. Check the market data subscriptions in detail. Please check with
-# "UseMarketDataSubscription" below. Using subscription data is disabled by default.
+# as well. Check the market data subscriptions (for your country) in detail.
+# Using subscription data is disabled by default, use param '-m' to enable
+# using market data subscriptions.
 #
 # TODO:
 # - Make this also a web application.
@@ -45,8 +48,6 @@
 #   - list all short call options not covered by stock
 #   - list weighted average strike price for Put/Call Short Options per underlying
 #   - grouping of complex (future) options, advise on next steps for strategies
-#   - getDTE() output should get cached
-#   - request all option greek data in parallel and cache it
 #   - also add historical prices for options, also check other data sources
 #   - for option prices, also check option equivalent prices as comparison
 # - summary per contract type and underlying
@@ -55,7 +56,7 @@
 # - Warn if margin is above certain level. No new (option) positions above a certain level.
 #   Close contracts above a certain level?
 # - allow different sorting strategies for overview pages
-# - Should large numbers use "." as thousand separator?
+# - Should large numbers use "." as thousand separator? Check en_US locale.
 # - Output time of last data update from TWS into overview pages.
 # - Allow refresh of portfolio overview data.
 # - Add cash-like symbols to amount of optional cash: SGOV/BIL, US-T-Bills, TLT...
@@ -299,7 +300,7 @@ def get_third_friday(yearmonth: str) -> str:
     days_until_friday = (4 - first_day.weekday()) % 7
     third_friday = first_day + datetime.timedelta(days=days_until_friday + 14)
     return f'{third_friday.day:02d}'
-    # return f'{pandas.tseries.offsets.Friday(3):02d}'
+    #return f'{pandas.tseries.offsets.Friday(3):02d}'
 
 # Return DTE (Days Til Expiration) for an option/future:
 #@lru_cache(maxsize=1024)
@@ -326,7 +327,9 @@ def getThetaDTE(pi: PortfolioItem, gr) -> tuple[float, int, float | None]:
     if gr is not None and gr.undPrice is not None:
         underlying_price = gr.undPrice
     else:
-        underlying_price = getMarketPrice(ct.symbol, 1) # XXX might not be stock
+        # Stock or Future?
+        num = 1 if isinstance(ct, Option) else 4
+        underlying_price = getMarketPrice(ct.symbol, num)
     if value is None:
         return (0.0, dte, underlying_price)
     if underlying_price is not None:
@@ -538,12 +541,12 @@ def showPortfolio(console: Console, accounts: list[str],
                     gr = data_cache[(num, name)]
                 (theta, dte, undl_price) = getThetaDTE(pi, gr)
                 ITM = 'Yes' if isITM(ct, undl_price) else ''
-                if UseMarketDataSubscription and gr is not None:
+                if gr is not None:
                     iv = gr.impliedVol * 100.0 if gr.impliedVol is not None else ''
                     delta = gr.delta * 100.0 if gr.delta is not None else ''
                 undl_price_str = format_float(undl_price, curr)
                 row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_str, ITM])
-                if UseMarketDataSubscription and gr is not None:
+                if gr is not None:
                     row.extend([f'{iv:.1f} %', f'{delta:.1f}',
                         f'{gr.gamma:.5f}', f'{gr.vega:.4f}', f'{gr.theta:.5f}'])
                         #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
@@ -585,7 +588,7 @@ def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: in
     for account in accounts:
         pf = []
         for pi in portfolio:
-            if pi.account != account or not isinstance(pi.contract, Option):
+            if pi.account != account or not isinstance(pi.contract, (Option, FuturesOption)):
                 continue
             # This might also show already expired options.
             #if getDTE(pi.contract) <= dte:
@@ -615,7 +618,9 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
             if gr is not None and gr.undPrice is not None:
                 underlying_price = gr.undPrice
             else:
-                underlying_price = getMarketPrice(ct.symbol, 1)
+                # Stock or Future?
+                num = 1 if isinstance(ct, Option) else 4
+                underlying_price = getMarketPrice(ct.symbol, num)
             if isITM(ct, underlying_price):
                 pf.append((pi, underlying_price))
         if not pf:
@@ -677,7 +682,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
         printAccountValues(accountValues)
 
     # To refresh use: reqAccountUpdatesAsync()
-    #portfolio = await ib.portfolioAsync()
+    #portfolio = await ib.portfolioAsync() # XXX
     portfolio = ib.portfolio()
     if not portfolio:
         # XXX allow empty portfolio? Check with paper trading...
@@ -692,7 +697,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     showPortfolio(console, accounts, portfolio, future_options=True)
     showPortfolio(console, accounts, portfolio, options=True)
     ShowLessThanDTE(accounts, portfolio, 21)
-    ShowLessThanDTE(accounts, portfolio, 4)
+    ShowLessThanDTE(accounts, portfolio, 6)
     ShowITM(accounts, portfolio)
     ShowNotionalValue(accounts, portfolio)
     showPortfolio(console, accounts, portfolio, currency_options=True)
