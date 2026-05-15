@@ -256,9 +256,9 @@ data_cache = {}
 
 #currency_prices: dict[str, float] = {}
 
-def getStockMarketPrice(name: str) -> float | None:
-    if (1, name) in data_cache:
-        return data_cache[(1, name)]
+def getMarketPrice(name: str, num: int) -> float | None:
+    if (num, name) in data_cache:
+        return data_cache[(num, name)]
     warn_once(logger,
         f'Not getting market price for {name}. ITM/theta calculations might be wrong.')
     return None
@@ -325,7 +325,7 @@ def getThetaDTE(pi: PortfolioItem, gr) -> tuple[float, int, float | None]:
     if gr is not None and gr.undPrice is not None:
         underlying_price = gr.undPrice
     else:
-        underlying_price = getStockMarketPrice(ct.symbol) # XXX might not be stock
+        underlying_price = getMarketPrice(ct.symbol, 1) # XXX might not be stock
     if value is None:
         return (0.0, dte, underlying_price)
     if underlying_price is not None:
@@ -379,6 +379,19 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
         row.extend(['', f'{sum_theta:.2f} {curr}', underlying_price, ''])
     table.add_row(*row)
 
+def getDataCacheNum(contract: Contract) -> int:
+    if isinstance(contract, Stock):
+        return 1
+    if isinstance(contract, Option):
+        return 2
+    if isinstance(contract, FuturesOption):
+        return 3
+    if isinstance(contract, Future):
+        return 4
+    if isinstance(contract, Forex):
+        return 5
+    return 0
+
 async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     cache = {}
     needed_currencies = sorted(list(
@@ -396,20 +409,19 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     if not UseMarketDataSubscription:
         return
     contracts = []
+    # add all forex pairs:
     for pair in needed_currencies:
         contracts.append(Forex(pair + 'USD'))
+    # add all (future) options to get greeks:
     for pi in portfolio:
         ct = pi.contract
-        if isinstance(ct, Option):
+        if isinstance(ct, (Option, FuturesOption)):
             name = getName(ct)
-            if (2, name) not in cache and (2, name) not in data_cache:
-                cache[(2, name)] = True
+            num = getDataCacheNum(ct)
+            if (num, name) not in cache and (num, name) not in data_cache:
+                cache[(num, name)] = True
                 contracts.append(ct)
-        elif isinstance(ct, FuturesOption):
-            name = getName(ct)
-            if (3, name) not in cache and (3, name) not in data_cache:
-                cache[(3, name)] = True
-                contracts.append(ct)
+    # get data from IB:
     results = await ib.qualifyContractsAsync(*contracts)
     tickers = await ib.reqTickersAsync(*results)
     for i in range(len(contracts)):
@@ -424,7 +436,8 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                 warn_once(logger, f'Not getting market price for {name}.')
             else:
                 #print(name, 'has market price', marketprice)
-                data_cache[(1, name)] = marketprice
+                num = getDataCacheNum(contract)
+                data_cache[(num, name)] = marketprice
                 if isinstance(contract, Forex):
                     pair = name + 'USD'
                     #currency_prices[pair] = marketprice
@@ -436,7 +449,8 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                 warn_once(logger, f'Not getting greeks for {name}.')
             else:
                 #print(name, 'has delta of', gr.delta)
-                data_cache[(2, name)] = gr
+                num = getDataCacheNum(contract)
+                data_cache[(num, name)] = gr
 
 # Output different portfolio views:
 def showPortfolio(console: Console, accounts: list[str],
@@ -517,9 +531,10 @@ def showPortfolio(console: Console, accounts: list[str],
             theta = 0.0
             if show_options_details:
                 ct = pi.contract
+                num = getDataCacheNum(ct)
                 gr = None
-                if (2, name) in data_cache:
-                    gr = data_cache[(2, name)]
+                if (num, name) in data_cache:
+                    gr = data_cache[(num, name)]
                 (theta, dte, undl_price) = getThetaDTE(pi, gr)
                 ITM = 'Yes' if isITM(ct, undl_price) else ''
                 if UseMarketDataSubscription and gr is not None:
@@ -553,7 +568,7 @@ def showPortfolio(console: Console, accounts: list[str],
             table.add_section()
             for undl in sorted(summe_undl.keys()):
                 for (curr, values) in summe_undl[undl].items():
-                    undl_price = getStockMarketPrice(undl) # XXX
+                    undl_price = getMarketPrice(undl, 1) # XXX might not be stock
                     undl_price_str = format_float(undl_price, curr)
                     add_summary(f'total {undl}', values, curr, show_options_details,
                         show_prices, table, undl_price_str)
@@ -592,13 +607,14 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
             if pi.account != account or not isinstance(ct, (Option, FuturesOption)):
                 continue
             name = getName(ct)
+            num = getDataCacheNum(ct)
             gr = None
-            if (2, name) in data_cache:
-                gr = data_cache[(2, name)]
+            if (num, name) in data_cache:
+                gr = data_cache[(num, name)]
             if gr is not None and gr.undPrice is not None:
                 underlying_price = gr.undPrice
             else:
-                underlying_price = getStockMarketPrice(ct.symbol)
+                underlying_price = getMarketPrice(ct.symbol, num)
             if isITM(ct, underlying_price):
                 pf.append((pi, underlying_price))
         if not pf:
