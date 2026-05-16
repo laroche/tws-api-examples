@@ -71,6 +71,7 @@
 #
 
 #from dataclasses import dataclass
+from typing import Any
 from functools import lru_cache
 import sys
 import os
@@ -80,7 +81,7 @@ import datetime
 import argparse
 import asyncio
 from ib_async import (IB, FuturesOption, Option, AccountValue,
-    PortfolioItem, Contract, Stock, Future, Forex, util)
+    PortfolioItem, Contract, Stock, Future, Forex, OptionComputation, util)
 
 from rich.console import Console
 from rich.panel import Panel
@@ -96,13 +97,13 @@ ShowYearWithTwoDigits: bool = False
 DoNotShowCurrentYear: bool = False
 
 # Show a red margin as warning above this margin level:
-MarginRed = 60.0
+MarginRed: float = 60.0
 # Show a yellow margin as warning above this margin level:
-MarginYellow = 30.0
+MarginYellow: float = 30.0
 
 # Futures and Futures-Options that are used for currency hedging
 # and should be displayed within an extra overview page:
-CURRENCY_SYMBOLS = {'EUR', 'M6E'}
+CURRENCY_SYMBOLS: set[str] = {'EUR', 'M6E'}
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,7 @@ def warn_once(mylogger: logging.Logger, msg: str) -> None:
 UseMarketDataSubscription: bool = False
 
 # Use delayed market data instead of realtime data?
-delayed_market_data = True
+delayed_market_data: bool = True
 
 # XXX How to detect base currency?
 #BASE = '€'
@@ -181,7 +182,7 @@ def format_float(f: float | None, curr: str) -> str:
     return f'{f:.0f} {curr}'
 
 # Convert currency name into short currency symbol:
-currency_conversion = {
+currency_conversion: dict[str, str] = {
     'EUR': '€', 'USD': '$', 'GBP': '£', 'JPY': '¥'}
 
 def get_currency_symbol(curr: str) -> str:
@@ -258,11 +259,11 @@ def showAccountSummary(console: Console, accounts: list[str],
 
 # Store market price and greeks of instruments into a dictionary:
 #MarketPrices: dict[str, float] = {}
-data_cache = {}
+data_cache: dict[tuple[int, str], float | OptionComputation] = {}
 
 #currency_prices: dict[str, float] = {}
 
-def getMarketPrice(name: str, num: int) -> float | None:
+def getMarketPrice(name: str, num: int) -> float | OptionComputation | None:
     if (num, name) in data_cache:
         return data_cache[(num, name)]
     warn_once(logger,
@@ -325,12 +326,12 @@ def getDTE(contract: Contract) -> int:
     return dte.days
 
 # Return average daily theta decay, DTE and underlying_price:
-def getThetaDTE(pi: PortfolioItem, gr) -> tuple[float, int, float | None]:
+def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float, int, float | None]:
     ct = pi.contract
     dte = getDTE(ct)
     value = pi.marketValue # value = intrinsic + extrinsic
     if gr is not None and gr.undPrice is not None:
-        underlying_price = gr.undPrice
+        underlying_price: Any = gr.undPrice
     else:
         # Stock or Future?
         num = 1 if isinstance(ct, Option) else 4
@@ -407,8 +408,8 @@ def getDataCacheNum(contract: Contract) -> int:
     return 0
 
 async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
-    cache = {}
-    needed_currencies = sorted(list(
+    cache: dict[tuple[int, str], bool] = {}
+    needed_currencies: list[str] = sorted(list(
         {p.contract.currency for p in portfolio if p.contract.currency != 'USD'}))
     # collect existing stock/future market prices:
     for pi in portfolio:
@@ -422,9 +423,9 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                     #print('Adding', name, 'with market price', pi.marketPrice)
     if not UseMarketDataSubscription:
         return
-    contracts = []
+    contracts: list[Contract] = []
     # add all forex pairs:
-    USD_QUOTE = {'EUR', 'GBP', 'AUD', 'NZD', 'CAD'}
+    USD_QUOTE: set[str] = {'EUR', 'GBP', 'AUD', 'NZD', 'CAD'}
     for pair in needed_currencies:
         symbol = f"{pair}USD" if pair in USD_QUOTE else f"USD{pair}"
         contracts.append(Forex(symbol))
@@ -440,8 +441,8 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     # get data from IB:
     if not contracts:
         return
-    results = await ib.qualifyContractsAsync(*contracts)
-    tickers = await ib.reqTickersAsync(*results)
+    results: list[Any] = await ib.qualifyContractsAsync(*contracts)
+    tickers: list[Any] = await ib.reqTickersAsync(*results)
     for i in range(len(contracts)):
         contract = results[i]
         ticker = tickers[i]
@@ -475,7 +476,7 @@ def showPortfolio(console: Console, accounts: list[str],
     portfolio: list[PortfolioItem], non_options: bool = False, future_options: bool = False,
     options: bool = False, currency_options: bool = False) -> None:
     for account in accounts:
-        pf = []
+        pf: list[PortfolioItem] = []
         for pi in portfolio:
             if pi.account != account:
                 continue
@@ -550,7 +551,7 @@ def showPortfolio(console: Console, accounts: list[str],
             if show_options_details:
                 ct = pi.contract
                 num = getDataCacheNum(ct)
-                gr = None
+                gr: Any | None = None
                 if (num, name) in data_cache:
                     gr = data_cache[(num, name)]
                 (theta, dte, undl_price) = getThetaDTE(pi, gr)
@@ -586,8 +587,8 @@ def showPortfolio(console: Console, accounts: list[str],
             table.add_section()
             for undl in sorted(summe_undl.keys()):
                 for (curr, values) in summe_undl[undl].items():
-                    undl_price = getMarketPrice(undl, 1) # XXX might not be stock
-                    undl_price_str = format_float(undl_price, curr)
+                    undl_price_ = getMarketPrice(undl, 1) # XXX might not be stock
+                    undl_price_str = format_float(undl_price_, curr)
                     add_summary(f'total {undl}', values, curr, show_options_details,
                         show_prices, table, undl_price_str)
         # summary per invested currency
@@ -600,7 +601,7 @@ def showPortfolio(console: Console, accounts: list[str],
 # Output list of options which expire in less than 'dte' days:
 def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: int) -> None:
     for account in accounts:
-        pf = []
+        pf: list[PortfolioItem] = []
         for pi in portfolio:
             if pi.account != account or not isinstance(pi.contract, (Option, FuturesOption)):
                 continue
@@ -626,7 +627,7 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
                 continue
             name = getName(ct)
             num = getDataCacheNum(ct)
-            gr = None
+            gr: Any | None = None
             if (num, name) in data_cache:
                 gr = data_cache[(num, name)]
             if gr is not None and gr.undPrice is not None:
@@ -886,7 +887,7 @@ async def main(argv: list[str]) -> None:
     # 2 == frozen
     # 3 == delayed
     # 4 == delayed frozen
-    MarketDataType = 4 if delayed_market_data else 1
+    MarketDataType: int = 4 if delayed_market_data else 1
     ib.reqMarketDataType(MarketDataType)
     #await ib.reqMarketDataTypeAsync(MarketDataType)
 
