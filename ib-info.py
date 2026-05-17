@@ -171,6 +171,13 @@ delayed_market_data: bool = True
 #    log_filename = config.get('logging', 'filename')
 #    return config
 
+# Convert currency name into short currency symbol:
+currency_conversion: dict[str, str] = {
+    'EUR': '€', 'USD': '$', 'GBP': '£', 'JPY': '¥'}
+
+def get_currency_symbol(curr: str) -> str:
+    return currency_conversion.get(curr, curr)
+
 # Format a float output, smaller numbers get 4 decimals:
 def format_float(f: float | None, curr: str) -> str:
     if f is None:
@@ -180,13 +187,6 @@ def format_float(f: float | None, curr: str) -> str:
     if f < 1000.0:
         return f'{f:.2f} {curr}'
     return f'{f:.0f} {curr}'
-
-# Convert currency name into short currency symbol:
-currency_conversion: dict[str, str] = {
-    'EUR': '€', 'USD': '$', 'GBP': '£', 'JPY': '¥'}
-
-def get_currency_symbol(curr: str) -> str:
-    return currency_conversion.get(curr, curr)
 
 def print_data(value: float) -> str:
     #if value >= 980000:
@@ -339,9 +339,9 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
     if value is None:
         return (0.0, dte, underlying_price)
     # Prefer IB's model theta:
-    #if gr is not None and gr.theta is not None:
-    #    avg_daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
-    #    return (avg_daily_theta_decay, dte, underlying_price)
+    if gr is not None and gr.theta is not None:
+        avg_daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
+        return (avg_daily_theta_decay, dte, underlying_price)
     # Compute theta decay ourselves:
     if underlying_price is not None:
         # subtract intrinsic value
@@ -349,7 +349,7 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
             value -= (ct.strike - underlying_price) * float(ct.multiplier) * pi.position
         if ct.right == 'C' and underlying_price > ct.strike:
             value -= (underlying_price - ct.strike) * float(ct.multiplier) * pi.position
-    avg_daily_theta_decay = value / (dte + 1) if dte >= 0 else 0.0
+    avg_daily_theta_decay = (- value) / (dte + 1) if dte >= 0 else 0.0
     return (avg_daily_theta_decay, dte, underlying_price)
 
 # Debug output of portfolio data:
