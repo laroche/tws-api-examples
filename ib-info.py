@@ -103,9 +103,9 @@ MarginYellow: float = 30.0
 
 # Futures and Futures-Options that are used for currency hedging
 # and should be displayed within an extra overview page:
-CURRENCY_SYMBOLS: set[str] = {'EUR', 'M6E'}
+CURRENCY_SYMBOLS: set[str] = {'EUR', 'M6E', '6E'}
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 # Keep track of 30 different messages and then warn again
 @lru_cache(30)
@@ -538,7 +538,7 @@ def showPortfolio(console: Console, accounts: list[str],
             summe_undl: dict[str, dict[str, list[float]]] = {}
             summe_exp: dict[str, dict[str, list[float]]] = {}
         for pi in pf:
-            pnl = pi.unrealizedPNL
+            pnl = pi.unrealizedPNL if pi.unrealizedPNL is not None else 0.0
             curr = get_currency_symbol(pi.contract.currency)
             costbasis = pi.position * pi.averageCost
             pnl_percent = (pnl / abs(costbasis) * 100.0) if costbasis != 0.0 else 0.0
@@ -620,7 +620,7 @@ def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: in
 # Output list of options which are ITM (In The Money):
 def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
-        pf = []
+        pf: list[tuple[PortfolioItem, float | None]] = []
         for pi in portfolio:
             ct = pi.contract
             if pi.account != account or not isinstance(ct, (Option, FuturesOption)):
