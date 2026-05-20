@@ -41,6 +41,7 @@
 #   - delta, gamma, theta, vega values
 #   - list notional value of all stock option short puts if assigned
 #     Show also needed cash as percentage of all available cash.
+#     Also account for spreads instead of naked puts.
 #   - list all options < 21 DTE, maybe only if delta is above a certain value
 #   - list all long options with DTE < 60(?) that should get rolled (hedges, Delta < 5)
 #   - list all short options with delta > 40 that should get rolled
