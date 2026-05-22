@@ -259,12 +259,12 @@ def showAccountSummary(console: Console, accounts: list[str],
             console.print(f"[bold red]Warning: Account {account} uses margin of {margin_str}.[/]")
 
 # Store market price and greeks of instruments into a dictionary:
-#MarketPrices: dict[str, float] = {}
-data_cache: dict[tuple[int, str], float | OptionComputation] = {}
+data_cache: dict[tuple[int, str], float] = {}
+greeks_cache: dict[tuple[int, str], OptionComputation] = {}
 
 #currency_prices: dict[str, float] = {}
 
-def getMarketPrice(name: str, num: int) -> float | OptionComputation | None:
+def getMarketPrice(name: str, num: int) -> float | None:
     if (num, name) in data_cache:
         return data_cache[(num, name)]
     warn_once(logger,
@@ -332,7 +332,7 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
     dte = getDTE(ct)
     value = pi.marketValue # value = intrinsic + extrinsic
     if gr is not None and gr.undPrice is not None:
-        underlying_price: Any = gr.undPrice
+        underlying_price: float | None = gr.undPrice
     else:
         # Stock or Future?
         num = 1 if isinstance(ct, Option) else 4
@@ -436,7 +436,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         if isinstance(ct, (Option, FuturesOption)):
             name = getName(ct)
             num = getDataCacheNum(ct)
-            if (num, name) not in cache and (num, name) not in data_cache:
+            if (num, name) not in cache and (num, name) not in greeks_cache:
                 cache[(num, name)] = True
                 contracts.append(ct)
     # get data from IB:
@@ -470,7 +470,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
             else:
                 #print(name, 'has delta of', gr.delta)
                 num = getDataCacheNum(contract)
-                data_cache[(num, name)] = gr
+                greeks_cache[(num, name)] = gr
 
 # Output different portfolio views:
 def showPortfolio(console: Console, accounts: list[str],
@@ -552,9 +552,9 @@ def showPortfolio(console: Console, accounts: list[str],
             if show_options_details:
                 ct = pi.contract
                 num = getDataCacheNum(ct)
-                gr: Any | None = None
-                if (num, name) in data_cache:
-                    gr = data_cache[(num, name)]
+                gr: OptionComputation | None = None
+                if (num, name) in greeks_cache:
+                    gr = greeks_cache[(num, name)]
                 (theta, dte, undl_price) = getThetaDTE(pi, gr)
                 ITM = 'Yes' if isITM(ct, undl_price) else ''
                 if gr is not None:
@@ -628,11 +628,11 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
                 continue
             name = getName(ct)
             num = getDataCacheNum(ct)
-            gr: Any | None = None
-            if (num, name) in data_cache:
-                gr = data_cache[(num, name)]
+            gr: OptionComputation | None = None
+            if (num, name) in greeks_cache:
+                gr = greeks_cache[(num, name)]
             if gr is not None and gr.undPrice is not None:
-                underlying_price = gr.undPrice
+                underlying_price: float | None = gr.undPrice
             else:
                 # Stock or Future?
                 num = 1 if isinstance(ct, Option) else 4
