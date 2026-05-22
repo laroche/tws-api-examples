@@ -97,9 +97,9 @@ ShowYearWithTwoDigits: bool = False
 # Do not show current year for expiration dates:
 DoNotShowCurrentYear: bool = False
 
-# Show a red margin as warning above this margin level:
-MarginRed: float = 60.0
-# Show a yellow margin as warning above this margin level:
+# Show a red margin above this margin level:
+MarginRed: float = 50.0
+# Show a yellow margin above this margin level:
 MarginYellow: float = 30.0
 
 # Futures and Futures-Options that are used for currency hedging
