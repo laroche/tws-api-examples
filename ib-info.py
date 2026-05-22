@@ -310,8 +310,11 @@ def get_third_friday(yearmonth: str) -> str:
 
 # Return DTE (Days Til Expiration) for an option/future:
 #@lru_cache(maxsize=1024)
-def getDTE(contract: Contract) -> int:
-    expiration = contract.lastTradeDateOrContractMonth
+def getDTE(contract: Contract | None, expiration: str | None = None) -> int:
+    if contract is not None:
+        expiration = contract.lastTradeDateOrContractMonth
+    if expiration is None:
+        raise ValueError
     if len(expiration) == 8:
         d = datetime.datetime.strptime(expiration, '%Y%m%d')
     elif len(expiration) == 6:
@@ -382,7 +385,8 @@ def isITM(contract: Contract, underlying_price: float | None) -> bool:
 # Output a summary line for the portfolio (could be for the complete portfolio, or
 # just a summary for one expiration date or for one underlying:
 def add_summary(name: str, values: list[float], curr: str, show_options_details: bool,
-    show_prices: bool, table: Table, underlying_price: str) -> None:
+                show_prices: bool, table: Table, underlying_price: str,
+                expiration: str | None) -> None:
     (sum_costbasis, sum_marketValue, sum_theta) = values
     pnl = sum_marketValue - sum_costbasis
     pnl_percent = (pnl / abs(sum_costbasis)) * 100.0 if sum_costbasis != 0.0 else 0.0
@@ -391,8 +395,8 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
     if show_prices:
         row.extend(['', ''])
     if show_options_details:
-        # XXX first value to show DTE for some outputs
-        row.extend(['', f'{sum_theta:.2f} {curr}', underlying_price, ''])
+        dte = str(getDTE(None, expiration)) if expiration is not None else ''
+        row.extend([dte, f'{sum_theta:.2f} {curr}', underlying_price, ''])
     table.add_row(*row)
 
 def getDataCacheNum(contract: Contract) -> int:
@@ -581,9 +585,8 @@ def showPortfolio(console: Console, accounts: list[str],
             for exp in sorted(summe_exp.keys()):
                 for (curr, values) in summe_exp[exp].items():
                     # XXX should the expiration output be shortened?
-                    # XXX add DTE output
                     add_summary(f'total {exp}', values, curr, show_options_details,
-                        show_prices, table, '')
+                        show_prices, table, '', exp)
             # add summary lines per underlying
             table.add_section()
             for undl in sorted(summe_undl.keys()):
@@ -591,12 +594,12 @@ def showPortfolio(console: Console, accounts: list[str],
                     undl_price_ = getMarketPrice(undl, 1) # XXX might not be stock
                     undl_price_str = format_float(undl_price_, curr)
                     add_summary(f'total {undl}', values, curr, show_options_details,
-                        show_prices, table, undl_price_str)
+                        show_prices, table, undl_price_str, None)
         # summary per invested currency
         table.add_section()
         for (curr, values) in summe.items():
             add_summary(f'total {curr}', values, curr,
-                show_options_details, show_prices, table, '')
+                show_options_details, show_prices, table, '', None)
         console.print(Panel(table))
 
 # Output list of options which expire in less than 'dte' days:
