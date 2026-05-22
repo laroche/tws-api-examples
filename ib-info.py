@@ -527,14 +527,14 @@ def showPortfolio(console: Console, accounts: list[str],
         if show_options_details:
             table.add_column('DTE', justify='right')
             table.add_column('daily theta', justify='right')
-            table.add_column('price underlying', justify='right')
+            table.add_column('price undly', justify='right')
             table.add_column('ITM', justify='right')
             if UseMarketDataSubscription:
                 table.add_column('IV', justify='right')
                 table.add_column('delta', justify='right')
                 table.add_column('gamma', justify='right')
                 table.add_column('vega', justify='right')
-                table.add_column('theta', justify='right')
+                #table.add_column('theta', justify='right')
                 #table.add_column('optPrice', justify='right')
                 #table.add_column('undPrice', justify='right')
                 #table.add_column('pvDividend', justify='right')
@@ -568,7 +568,8 @@ def showPortfolio(console: Console, accounts: list[str],
                 row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_str, ITM])
                 if gr is not None:
                     row.extend([f'{iv:.1f} %', f'{delta:.1f}',
-                        f'{gr.gamma:.5f}', f'{gr.vega:.4f}', f'{gr.theta:.5f}'])
+                        f'{gr.gamma:.5f}', f'{gr.vega:.4f}'])
+                        #, f'{gr.theta:.5f}'])
                         #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
                 if ct.symbol not in summe_undl:
                     summe_undl[ct.symbol] = {}
