@@ -53,6 +53,7 @@
 #   - for option prices, also check option equivalent prices as comparison
 # - summary per contract type and underlying
 # - Assets per currency overview: list all $/EUR-denominated assets.
+# - New summary info with UnrealizedPnL would be nice. Not part of accountSummary.
 # - overview pages markets
 # - Warn if margin is above certain level. No new (option) positions above a certain level.
 #   Close contracts above a certain level?
@@ -210,6 +211,9 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
         for p in accountSummary:
             if p.account != account:
                 continue
+            # XXX For account=='All' this needs changes: NetLiquidation is
+            # NetLiquidationByCurrency with currency=BASE.
+            # TotalCashBalance with BASE, no Cushion/margin.
             if p.tag == 'TotalCashValue':
                 cash = float(p.value)
                 cash_str = print_data(cash) + get_currency_symbol(p.currency)
@@ -384,13 +388,10 @@ def isITM(contract: Contract, underlying_price: float | None) -> bool:
 
 # Output a summary line for the portfolio (could be for the complete portfolio, or
 # just a summary for one expiration date or for one underlying:
-def add_summary(name: str, gr_shown: bool, values: list[float], curr: str,
-                show_options_details: bool, show_prices: bool, table: Table,
+def add_summary(name: str, values: list[float], curr: str, show_options_details: bool,
+                show_prices: bool, table: Table,
                 underlying_price: str, expiration: str | None) -> None:
-    if gr_shown:
-        (sum_costbasis, sum_marketValue, sum_theta, sum_delta_curr) = values
-    else:
-        (sum_costbasis, sum_marketValue, sum_theta) = values
+    (sum_costbasis, sum_marketValue, sum_theta, sum_delta_curr) = values
     pnl = sum_marketValue - sum_costbasis
     pnl_percent = (pnl / abs(sum_costbasis)) * 100.0 if sum_costbasis != 0.0 else 0.0
     row = ['', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.1f}%',
@@ -400,8 +401,11 @@ def add_summary(name: str, gr_shown: bool, values: list[float], curr: str,
     if show_options_details:
         dte = str(getDTE(None, expiration)) if expiration is not None else ''
         row.extend([dte, f'{sum_theta:.2f} {curr}', underlying_price, ''])
-        if gr_shown:
-            row.extend(['', '', f'{sum_delta_curr:.0f} {curr}', '', ''])
+        if UseMarketDataSubscription:
+            sum_delta_curr_str = ''
+            if sum_delta_curr != 0.0:
+                sum_delta_curr_str = f'{sum_delta_curr:.0f} {curr}'
+            row.extend(['', '', sum_delta_curr_str, '', ''])
     table.add_row(*row)
 
 def getDataCacheNum(contract: Contract) -> int:
@@ -559,7 +563,7 @@ def showPortfolio(console: Console, accounts: list[str],
             if show_prices:
                 row.extend([f'{pi.marketPrice:.2f} {curr}', f'{pi.averageCost:.2f} {curr}'])
             theta = 0.0
-            values = [costbasis, pi.marketValue, theta]
+            values = [costbasis, pi.marketValue, theta, 0.0]
             gr: OptionComputation | None = None
             if show_options_details:
                 ct = pi.contract
@@ -573,15 +577,18 @@ def showPortfolio(console: Console, accounts: list[str],
                 row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_str, ITM])
                 if gr is not None:
                     iv = gr.impliedVol * 100.0 if gr.impliedVol is not None else ''
-                    (delta, delta_curr) = (0.0, 0.0)
+                    (delta, delta_curr, delta_curr_str) = (0.0, 0.0, '')
                     if gr.delta is not None:
                         delta = gr.delta * 100.0
                         delta_curr = gr.delta * float(ct.multiplier) * pi.position * ct.strike
-                        values.append(delta_curr)
-                    row.extend([f'{iv:.1f} %', f'{delta:.1f}', f'{delta_curr:.0f} {curr}',
+                        delta_curr_str = f'{delta_curr:.0f} {curr}'
+                        values[3] = delta_curr # XXX ugly
+                    row.extend([f'{iv:.1f} %', f'{delta:.1f}', delta_curr_str,
                         f'{gr.gamma:.5f}', f'{gr.vega:.4f}'])
                         #, f'{gr.theta:.5f}'])
                         #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
+                elif UseMarketDataSubscription:
+                    row.extend(['', '', '', '', ''])
                 if ct.symbol not in summe_undl:
                     summe_undl[ct.symbol] = {}
                 accumulate_values(summe_undl[ct.symbol], values, curr)
@@ -597,7 +604,7 @@ def showPortfolio(console: Console, accounts: list[str],
             for exp in sorted(summe_exp.keys()):
                 for (curr, values) in summe_exp[exp].items():
                     # XXX should the expiration output be shortened?
-                    add_summary(f'total {exp}', gr is not None, values, curr, show_options_details,
+                    add_summary(f'total {exp}', values, curr, show_options_details,
                         show_prices, table, '', exp)
             # add summary lines per underlying
             table.add_section()
@@ -605,12 +612,12 @@ def showPortfolio(console: Console, accounts: list[str],
                 for (curr, values) in summe_undl[undl].items():
                     undl_price_ = getMarketPrice(undl, 1) # XXX might not be stock
                     undl_price_str = format_float(undl_price_, curr)
-                    add_summary(f'total {undl}', gr is not None, values, curr, show_options_details,
+                    add_summary(f'total {undl}', values, curr, show_options_details,
                         show_prices, table, undl_price_str, None)
         # summary per invested currency
         table.add_section()
         for (curr, values) in summe.items():
-            add_summary(f'total {curr}', gr is not None, values, curr,
+            add_summary(f'total {curr}', values, curr,
                 show_options_details, show_prices, table, '', None)
         console.print(Panel(table))
 
