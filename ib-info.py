@@ -192,8 +192,8 @@ def format_float(f: float | None, curr: str) -> str:
 
 def print_data(value: float) -> str:
     #if value >= 980000:
-    #    return locale.format_string('%d', int(round(value / 1000)), grouping=True) + 'T'
-    return locale.format_string('%d', int(round(value)), grouping=True)
+    #    return locale.format_string('%d', round(value / 1000), grouping=True) + 'T'
+    return locale.format_string('%d', round(value), grouping=True)
 
 # Debugging output of accountSummary:
 def printAccountSummary(accountSummary: list[AccountValue]) -> None:
@@ -227,7 +227,7 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
             elif p.tag == 'NetLiquidation':
                 nav = float(p.value)
                 nav_str = print_data(nav) + get_currency_symbol(p.currency)
-        cash_percent = str(round(cash * 100.0 / nav)) + '%' if nav > 0.0 else ''
+        cash_percent = f'{cash * 100.0 / nav:.0f}%' if nav > 0.0 else ''
         ret.append((account, nav_str, margin, margin_str, cash_str, cash_percent))
     return ret
 
@@ -351,6 +351,7 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
         avg_daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
         return (avg_daily_theta_decay, dte, underlying_price)
     # Compute theta decay ourselves:
+    #oldvalue = value
     if underlying_price is not None:
         # subtract intrinsic value
         if ct.right == 'P' and underlying_price < ct.strike:
@@ -358,6 +359,7 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
         if ct.right == 'C' and underlying_price > ct.strike:
             value -= (underlying_price - ct.strike) * float(ct.multiplier) * pi.position
     avg_daily_theta_decay = (- value) / (dte + 1) if dte >= 0 else 0.0
+    #print(pi.position, getName(ct), oldvalue, value, dte, avg_daily_theta_decay)
     return (avg_daily_theta_decay, dte, underlying_price)
 
 # Debug output of portfolio data:
@@ -442,7 +444,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     USD_QUOTE: set[str] = {'EUR', 'GBP', 'AUD', 'NZD', 'CAD'}
     for pair in needed_currencies:
         symbol = f"{pair}USD" if pair in USD_QUOTE else f"USD{pair}"
-        contracts.append(Forex(symbol))
+        contracts.append(Forex(symbol)) # XXX exchange='IDEALPRO'
     # add all (future) options to get greeks:
     for pi in portfolio:
         ct = pi.contract
@@ -455,6 +457,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     # get data from IB:
     if not contracts:
         return
+    # XXX Is the limit of 50 messages/second requiring batching into smaller chunks?
     results: list[Any] = await ib.qualifyContractsAsync(*contracts)
     tickers: list[Any] = await ib.reqTickersAsync(*results)
     for i in range(len(contracts)):
@@ -671,7 +674,7 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
             print(f'{getPosition(p)} {getName(p.contract)} with underlying price {s}')
         print()
 
-# If all short puts get assigned, what amount of cash (notional vlaue) would be needed
+# If all short puts get assigned, what amount of cash (notional value) would be needed
 # to pay all these assignments?
 # XXX Maybe list all individual short puts with their needed cash sum:
 def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
@@ -693,7 +696,7 @@ def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> No
             if summe[0] == 0.0:
                 continue
             # XXX Show also needed cash as percentage of all available cash:
-            #cash_percent = str(round(-summe[0] * 100.0 / all_cash)) + '%'
+            #cash_percent = f'{-summe[0] * 100.0 / all_cash:.0f}%' if all_cash > 0.0 else ''
             summe_str = format_float(-summe[0], curr)
             print(f'Cash needed if all short puts get assigned for account {account}: {summe_str}')
         print()
