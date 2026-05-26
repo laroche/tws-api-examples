@@ -37,6 +37,8 @@
 # - For currency overview futures are not yet included.
 # - Allow for nice/modern config file.
 # - We use local timzone. For DTE calculations we should use exchange timezone?
+#   Also check ib_async.util.time_to_tws().
+# - print() -> console.print()
 # - Add to options output:
 #   - delta, gamma, theta, vega values
 #   - list notional value of all stock option short puts if assigned
@@ -90,12 +92,15 @@ from rich.panel import Panel
 from rich.table import Table
 
 # How verbose should logging be?
+# Check with params --verbose/-v, --debug, --quiet.
 verbose: int = 1
 
 # Output configuration:
-# Limit year of expiration date to 2 digits only:
+# Limit year of expiration date to 2 digits only.
+# This is param '--two-digit-years':
 ShowYearWithTwoDigits: bool = False
-# Do not show current year for expiration dates:
+# Do not show current year for expiration dates.
+# This is param '--short-expire-format':
 DoNotShowCurrentYear: bool = False
 
 # Show a red margin above this margin level:
@@ -120,9 +125,10 @@ def warn_once(mylogger: logging.Logger, msg: str) -> None:
 
 # Many subscriptions of market data are only available within the
 # TWS, but not for the (python) API. So by default, we set
-# access to market subscription data to False:
+# access to market subscription data to False and delayed market data
+# to True.
+# Both can be changed with param --use-market-data/-m:
 UseMarketDataSubscription: bool = False
-
 # Use delayed market data instead of realtime data?
 delayed_market_data: bool = True
 
@@ -220,8 +226,8 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
             elif p.tag == 'Cushion':
                 # Handle IBKR returning cushion as percentage (e.g., "95.2")
                 cushion_val = float(p.value)
-                if cushion_val > 1.0:
-                    cushion_val /= 100.0
+                #if cushion_val > 1.0:
+                #    cushion_val /= 100.0
                 margin = (1.0 - cushion_val) * 100.0
                 margin_str = f'{margin:.1f}%'
             elif p.tag == 'NetLiquidation':
@@ -265,7 +271,6 @@ def showAccountSummary(console: Console, accounts: list[str],
 # Store market price and greeks of instruments into a dictionary:
 data_cache: dict[tuple[int, str], float] = {}
 greeks_cache: dict[tuple[int, str], OptionComputation] = {}
-
 #currency_prices: dict[str, float] = {}
 
 def getMarketPrice(name: str, num: int) -> float | None:
@@ -319,6 +324,7 @@ def getDTE(contract: Contract | None, expiration: str | None = None) -> int:
         expiration = contract.lastTradeDateOrContractMonth
     if expiration is None:
         raise ValueError
+        #XXX return -2
     if len(expiration) == 8:
         d = datetime.datetime.strptime(expiration, '%Y%m%d')
     elif len(expiration) == 6:
@@ -348,8 +354,8 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
         return (0.0, dte, underlying_price)
     # Prefer IB's model theta:
     if gr is not None and gr.theta is not None:
-        avg_daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
-        return (avg_daily_theta_decay, dte, underlying_price)
+        daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
+        return (daily_theta_decay, dte, underlying_price)
     # Compute theta decay ourselves:
     #oldvalue = value
     if underlying_price is not None:
@@ -370,7 +376,8 @@ def showPortfolioDebug(portfolio: list[PortfolioItem]) -> None:
         print(p)
 
 # Sum up values within individual portfolio items:
-def accumulate_values(d: dict[str, list[float]], values: list[float], currency: str) -> None:
+def accumulate_values(d: dict[str, list[float]], values: list[float] | tuple[float],
+                      currency: str) -> None:
     """Generic accumulator for currency-keyed dictionaries."""
     # Check if we need to add a new currency:
     if currency not in d:
@@ -401,8 +408,8 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
     if show_prices:
         row.extend(['', ''])
     if show_options_details:
-        dte = str(getDTE(None, expiration)) if expiration is not None else ''
-        row.extend([dte, f'{sum_theta:.2f} {curr}', underlying_price, ''])
+        dte = getDTE(None, expiration) if expiration is not None else ''
+        row.extend([f'{dte}', f'{sum_theta:.2f} {curr}', underlying_price, ''])
         if UseMarketDataSubscription:
             sum_delta_curr_str = ''
             if sum_delta_curr != 0.0:
@@ -468,7 +475,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         name = getName(contract)
         if isinstance(contract, (Stock, Future, Forex)):
             marketprice = ticker.marketPrice()
-            if util.isNan(marketprice):
+            if marketprice is None or util.isNan(marketprice):
                 warn_once(logger, f'Not getting market price for {name}.')
             else:
                 #print(name, 'has market price', marketprice)
@@ -577,14 +584,15 @@ def showPortfolio(console: Console, accounts: list[str],
                 values[2] = theta # XXX ugly
                 ITM = 'Yes' if isITM(ct, undl_price) else ''
                 undl_price_str = format_float(undl_price, curr)
-                row.extend([f'{dte:.0f}', f'{theta:.2f} {curr}', undl_price_str, ITM])
+                row.extend([f'{dte}', f'{theta:.2f} {curr}', undl_price_str, ITM])
                 if gr is not None:
                     iv = gr.impliedVol * 100.0 if gr.impliedVol is not None else ''
                     (delta, delta_curr, delta_curr_str) = (0.0, 0.0, '')
                     if gr.delta is not None:
                         delta = gr.delta * 100.0
-                        delta_curr = gr.delta * float(ct.multiplier) * pi.position * ct.strike
-                        delta_curr_str = f'{delta_curr:.0f} {curr}'
+                        if undl_price is not None:
+                            delta_curr = gr.delta * undl_price * float(ct.multiplier) * pi.position
+                            delta_curr_str = f'{delta_curr:.0f} {curr}'
                         values[3] = delta_curr # XXX ugly
                     row.extend([f'{iv:.1f} %', f'{delta:.1f}', delta_curr_str,
                         f'{gr.gamma:.5f}', f'{gr.vega:.4f}'])
@@ -677,6 +685,7 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
 # If all short puts get assigned, what amount of cash (notional value) would be needed
 # to pay all these assignments?
 # XXX Maybe list all individual short puts with their needed cash sum:
+# XXX List notional value of all currency future options and futures.
 def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
         sum_sp: dict[str, list[float]] = {} # sum of all short puts if assigned
@@ -687,7 +696,7 @@ def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> No
             if ct.right != 'P' or pi.position >= 0.0: # not short put
                 continue
             curr = get_currency_symbol(ct.currency)
-            accumulate_values(sum_sp, [ct.strike * pi.position * float(ct.multiplier)], curr)
+            accumulate_values(sum_sp, (ct.strike * pi.position * float(ct.multiplier),), curr)
         # XXX Also add open trades into notional value calculation.
         if not sum_sp:
             continue
