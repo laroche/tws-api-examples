@@ -52,6 +52,7 @@
 #   - list weighted average strike price for Put/Call Short Options per underlying
 #   - grouping of complex (future) options, advise on next steps for strategies
 #   - also add historical prices for options, also check other data sources
+#   - If no market data is available, should we ask for historical data?
 #   - for option prices, also check option equivalent prices as comparison
 # - summary per contract type and underlying
 # - Assets per currency overview: list all $/EUR-denominated assets.
@@ -265,7 +266,7 @@ def showAccountSummary(console: Console, accounts: list[str],
         table.add_row(f'{account}', f'{nav}', margin_str, f'{cash} ({cash_percent})')
     console.print(Panel(table))
     for (account, nav, margin, margin_str, cash, cash_percent) in accountDetails:
-        if margin > MarginRed:
+        if margin >= MarginRed:
             console.print(f"[bold red]Warning: Account {account} uses margin of {margin_str}.[/]")
 
 # Store market price and greeks of instruments into a dictionary:
