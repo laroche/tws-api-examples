@@ -347,6 +347,10 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
     value = pi.marketValue # value = intrinsic + extrinsic
     if gr is not None and gr.undPrice is not None:
         underlying_price: float | None = gr.undPrice
+        # Add price into our cache:
+        num = 1 if isinstance(ct, Option) else 4
+        if underlying_price is not None and (num, ct.symbol) not in data_cache:
+            data_cache[(num, ct.symbol)] = underlying_price
     else:
         # Stock or Future?
         num = 1 if isinstance(ct, Option) else 4
