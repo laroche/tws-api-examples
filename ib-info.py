@@ -71,6 +71,7 @@
 # - How to allow for re-connects?
 # - Is a disconnect done properly for all error cases?
 # - add sqlite database for historical data?
+# - pi.marketValue, pi.averageCost, ct.multiplier can be None
 #
 # pylint: disable=W0511,R0912,C0103,C0114,C0115,C0116
 #
@@ -201,6 +202,7 @@ def print_data(value: float) -> str:
     #if value >= 980000:
     #    return locale.format_string('%d', round(value / 1000), grouping=True) + 'T'
     return locale.format_string('%d', round(value), grouping=True)
+    #return f"{value:n}"
 
 # Debugging output of accountSummary:
 def printAccountSummary(accountSummary: list[AccountValue]) -> None:
@@ -450,8 +452,8 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     for pi in portfolio:
         # XXX future prices should also get added
         if isinstance(pi.contract, Stock):
-            # XXX check if different values exist?
-            if pi.marketPrice is not None: # XXX Is this needed?
+            if pi.marketPrice is not None:
+                # XXX check if different values exist?
                 addMarketPrice(getName(pi.contract), 1, pi.marketPrice)
                 #print('Adding', getName(pi.contract), 'with market price', pi.marketPrice)
     if not UseMarketDataSubscription:
@@ -608,8 +610,10 @@ def showPortfolio(console: Console, accounts: list[str],
                             delta_curr = gr.delta * undl_price * float(ct.multiplier) * pi.position
                             delta_curr_str = f'{delta_curr:.0f} {curr}'
                         values[3] = delta_curr # XXX ugly
-                    row.extend([f'{iv:.1f} %', f'{delta:.1f}', delta_curr_str,
-                        f'{gr.gamma:.5f}', f'{gr.vega:.4f}'])
+                    gamma_str = f'{gr.gamma:.5f}' if gr.gamma is not None else ''
+                    vega_str = f'{gr.vega:.4f}' if gr.vega is not None else ''
+                    row.extend([f'{iv:.1f} %', f'{delta:.1f}', delta_curr_str, gamma_str,
+                                vega_str])
                         #, f'{gr.theta:.5f}'])
                         #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
                 elif UseMarketDataSubscription:
