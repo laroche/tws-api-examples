@@ -437,8 +437,6 @@ def getDataCacheNum(contract: Contract) -> int:
 
 async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     cache: dict[tuple[int, str], bool] = {}
-    needed_currencies: list[str] = sorted(list(
-        {p.contract.currency for p in portfolio if p.contract.currency != 'USD'}))
     # collect existing stock/future market prices:
     for pi in portfolio:
         # XXX future prices should also get added
@@ -454,9 +452,13 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     contracts: list[Contract] = []
     # add all forex pairs:
     USD_QUOTE: set[str] = {'EUR', 'GBP', 'AUD', 'NZD', 'CAD'}
+    needed_currencies: list[str] = sorted(list(
+        {p.contract.currency for p in portfolio if p.contract.currency != 'USD'}))
+    # XXX Add some base currency here to the list, e.g. EURUSD.
     for pair in needed_currencies:
         symbol = f"{pair}USD" if pair in USD_QUOTE else f"USD{pair}"
         contracts.append(Forex(symbol)) # XXX exchange='IDEALPRO'
+        #warn_once(logger, f'Fetching forex market price for {symbol}.')
     # add all (future) options to get greeks:
     for pi in portfolio:
         ct = pi.contract
@@ -480,6 +482,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         name = getName(contract)
         if isinstance(contract, (Stock, Future, Forex)):
             marketprice = ticker.marketPrice()
+            # XXX Should we also check ticker.midpoint() or ticker.last?
             if marketprice is None or util.isNan(marketprice):
                 warn_once(logger, f'Not getting market price for {name}.')
             else:
