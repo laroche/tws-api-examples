@@ -274,11 +274,20 @@ data_cache: dict[tuple[int, str], float] = {}
 greeks_cache: dict[tuple[int, str], OptionComputation] = {}
 #currency_prices: dict[str, float] = {}
 
+def addMarketPrice(name: str, num: int, price: float) -> None:
+    if (num, name) not in data_cache:
+        data_cache[(num, name)] = price
+
 def getMarketPrice(name: str, num: int) -> float | None:
     if (num, name) in data_cache:
         return data_cache[(num, name)]
     warn_once(logger,
         f'Not getting market price for {name}. ITM/theta calculations might be wrong.')
+    return None
+
+def getGreeksCache(name: str, num: int) -> OptionComputation | None:
+    if (num, name) in greeks_cache:
+        return greeks_cache[(num, name)]
     return None
 
 # Strip ".0" at end of string:
@@ -348,9 +357,9 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
     if gr is not None and gr.undPrice is not None:
         underlying_price: float | None = gr.undPrice
         # Add price into our cache:
-        num = 1 if isinstance(ct, Option) else 4
-        if underlying_price is not None and (num, ct.symbol) not in data_cache:
-            data_cache[(num, ct.symbol)] = underlying_price
+        if underlying_price is not None:
+            num = 1 if isinstance(ct, Option) else 4
+            addMarketPrice(ct.symbol, num, underlying_price)
     else:
         # Stock or Future?
         num = 1 if isinstance(ct, Option) else 4
@@ -443,10 +452,8 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         if isinstance(pi.contract, Stock):
             # XXX check if different values exist?
             if pi.marketPrice is not None: # XXX Is this needed?
-                name = getName(pi.contract)
-                if (1, name) not in data_cache:
-                    data_cache[(1, name)] = pi.marketPrice
-                    #print('Adding', name, 'with market price', pi.marketPrice)
+                addMarketPrice(getName(pi.contract), 1, pi.marketPrice)
+                #print('Adding', getName(pi.contract), 'with market price', pi.marketPrice)
     if not UseMarketDataSubscription:
         return
     contracts: list[Contract] = []
@@ -488,7 +495,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
             else:
                 #print(name, 'has market price', marketprice)
                 num = getDataCacheNum(contract)
-                data_cache[(num, name)] = marketprice
+                addMarketPrice(name, num, marketprice)
                 if isinstance(contract, Forex):
                     pair = name + 'USD'
                     #currency_prices[pair] = marketprice
@@ -586,8 +593,7 @@ def showPortfolio(console: Console, accounts: list[str],
             if show_options_details:
                 ct = pi.contract
                 num = getDataCacheNum(ct)
-                if (num, name) in greeks_cache:
-                    gr = greeks_cache[(num, name)]
+                gr = getGreeksCache(name, num)
                 (theta, dte, undl_price) = getThetaDTE(pi, gr)
                 values[2] = theta # XXX ugly
                 ITM = 'Yes' if isITM(ct, undl_price) else ''
@@ -669,9 +675,7 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
                 continue
             name = getName(ct)
             num = getDataCacheNum(ct)
-            gr: OptionComputation | None = None
-            if (num, name) in greeks_cache:
-                gr = greeks_cache[(num, name)]
+            gr = getGreeksCache(name, num)
             if gr is not None and gr.undPrice is not None:
                 underlying_price: float | None = gr.undPrice
             else:
