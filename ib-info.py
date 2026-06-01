@@ -71,7 +71,7 @@
 # - How to allow for re-connects?
 # - Is a disconnect done properly for all error cases?
 # - add sqlite database for historical data?
-# - pi.marketValue, pi.averageCost, ct.multiplier can be None
+# - pi.marketValue, pi.averageCost, pi.marketPrice, ct.multiplier can be None
 #
 # pylint: disable=W0511,R0912,C0103,C0114,C0115,C0116
 #
@@ -192,9 +192,10 @@ def get_currency_symbol(curr: str) -> str:
 def format_float(f: float | None, curr: str) -> str:
     if f is None:
         return ''
-    if f < 10.0:
+    af = abs(f)
+    if af < 10.0:
         return f'{f:.4f} {curr}'
-    if f < 1000.0:
+    if af < 1000.0:
         return f'{f:.2f} {curr}'
     return f'{f:.0f} {curr}'
 
@@ -481,11 +482,18 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     if not contracts:
         return
     # XXX Is the limit of 50 messages/second requiring batching into smaller chunks?
-    results: list[Any] = await ib.qualifyContractsAsync(*contracts)
-    tickers: list[Any] = await ib.reqTickersAsync(*results)
-    for i in range(len(contracts)):
-        contract = results[i]
-        ticker = tickers[i]
+    #results: list[Any] = await ib.qualifyContractsAsync(*contracts)
+    #tickers: list[Any] = await ib.reqTickersAsync(*results)
+    #for i in range(len(contracts)):
+    #    contract = results[i]
+    #    ticker = tickers[i]
+    results = await ib.qualifyContractsAsync(*contracts)
+    # Filter out None results and track original indices
+    valid: list[Any] = [(c, r) for c, r in zip(contracts, results) if r is not None]
+    if not valid:
+        return
+    tickers = await ib.reqTickersAsync(*[r for _, r in valid])
+    for (_, contract), ticker in zip(valid, tickers):
         if contract is None or ticker is None:
             continue
         name = getName(contract)
@@ -602,7 +610,7 @@ def showPortfolio(console: Console, accounts: list[str],
                 undl_price_str = format_float(undl_price, curr)
                 row.extend([f'{dte}', f'{theta:.2f} {curr}', undl_price_str, ITM])
                 if gr is not None:
-                    iv = gr.impliedVol * 100.0 if gr.impliedVol is not None else ''
+                    iv_str = f'{gr.impliedVol * 100.0:.1f} %' if gr.impliedVol is not None else ''
                     (delta, delta_curr, delta_curr_str) = (0.0, 0.0, '')
                     if gr.delta is not None:
                         delta = gr.delta * 100.0
@@ -612,7 +620,7 @@ def showPortfolio(console: Console, accounts: list[str],
                         values[3] = delta_curr # XXX ugly
                     gamma_str = f'{gr.gamma:.5f}' if gr.gamma is not None else ''
                     vega_str = f'{gr.vega:.4f}' if gr.vega is not None else ''
-                    row.extend([f'{iv:.1f} %', f'{delta:.1f}', delta_curr_str, gamma_str,
+                    row.extend([iv_str, f'{delta:.1f}', delta_curr_str, gamma_str,
                                 vega_str])
                         #, f'{gr.theta:.5f}'])
                         #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
