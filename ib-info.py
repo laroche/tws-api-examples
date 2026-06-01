@@ -698,6 +698,10 @@ def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> No
             ct = pi.contract
             if pi.account != account or not isinstance(ct, Option):
                 continue
+            # We do not include futures option and also not index option:
+            # XXX How can we automate detecting this list?
+            if ct.symbol in ('SPX',):
+                continue
             if ct.right != 'P' or pi.position >= 0.0: # not short put
                 continue
             curr = get_currency_symbol(ct.currency)
