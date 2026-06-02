@@ -237,7 +237,7 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
             elif p.tag == 'NetLiquidation':
                 nav = float(p.value)
                 nav_str = print_data(nav) + get_currency_symbol(p.currency)
-        cash_percent = f'{cash * 100.0 / nav:.0f}%' if nav > 0.0 else ''
+        cash_percent = f'{cash * 100.0 / nav:.0f}%' if nav > 0.0 else '0%'
         ret.append((account, nav_str, margin, margin_str, cash_str, cash_percent))
     return ret
 
@@ -336,7 +336,7 @@ def getDTE(contract: Contract | None, expiration: str | None = None) -> int:
     if contract is not None:
         expiration = contract.lastTradeDateOrContractMonth
     if expiration is None:
-        raise ValueError
+        raise ValueError(f'No expiration date provided for contract {getName(contract)}')
         #XXX return -2
     if len(expiration) == 8:
         d = datetime.datetime.strptime(expiration, '%Y%m%d')
@@ -718,7 +718,7 @@ def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> No
             if pi.account != account or not isinstance(ct, Option):
                 continue
             # We do not include futures option and also not index option:
-            # XXX How can we automate detecting this list?
+            # XXX How can we automate detecting this list? SPXW,RUT,NDX?
             if ct.symbol in ('SPX',):
                 continue
             if ct.right != 'P' or pi.position >= 0.0: # not short put
@@ -934,6 +934,7 @@ async def main(argv: list[str]) -> None:
         util.logToConsole(logging.DEBUG)
     #util.logToFile('ib.log', logging.WARNING)
 
+    ib = None
     ib = await safe_connect(args.host, args.port, args.client_id, args.readonly, args.account)
 
     #if not ib.isConnected():
@@ -1006,7 +1007,8 @@ async def main(argv: list[str]) -> None:
     # ticker.askGreeks ticker.bidGreeks ticker.lastGreeks ticker.modelGreeks
 
     finally:
-        ib.disconnect()
+        if ib is not None:
+            ib.disconnect()
 
 
 if __name__ == '__main__':
