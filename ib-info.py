@@ -336,7 +336,8 @@ def getDTE(contract: Contract | None, expiration: str | None = None) -> int:
     if contract is not None:
         expiration = contract.lastTradeDateOrContractMonth
     if expiration is None:
-        raise ValueError(f'No expiration date provided for contract {getName(contract)}')
+        name = getName(contract) if contract is not None else 'unknown'
+        raise ValueError(f'No expiration date provided for contract {name}')
         #XXX return -2
     if len(expiration) == 8:
         d = datetime.datetime.strptime(expiration, '%Y%m%d')
@@ -462,8 +463,8 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     contracts: list[Contract] = []
     # add all forex pairs:
     USD_QUOTE: set[str] = {'EUR', 'GBP', 'AUD', 'NZD', 'CAD'}
-    needed_currencies: list[str] = sorted(list(
-        {p.contract.currency for p in portfolio if p.contract.currency != 'USD'}))
+    needed_currencies: list[str] = sorted(list({p.contract.currency for p in portfolio \
+        if p.contract.currency and p.contract.currency != 'USD'}))
     # XXX Add some base currency here to the list, e.g. EURUSD.
     for pair in needed_currencies:
         symbol = f"{pair}USD" if pair in USD_QUOTE else f"USD{pair}"
@@ -590,7 +591,11 @@ def showPortfolio(console: Console, accounts: list[str],
         for pi in pf:
             pnl = pi.unrealizedPNL if pi.unrealizedPNL is not None else 0.0
             curr = get_currency_symbol(pi.contract.currency)
-            costbasis = pi.position * pi.averageCost
+            if pi.averageCost is not None:
+                costbasis = pi.position * pi.averageCost
+            else:
+                mv = pi.marketValue if pi.marketValue is not None else 0.0
+                costbasis = mv - pnl
             pnl_percent = (pnl / abs(costbasis) * 100.0) if costbasis != 0.0 else 0.0
             name = getName(pi.contract)
             row = [f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.0f}%',
