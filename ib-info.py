@@ -38,7 +38,7 @@
 # - Allow for nice/modern config file.
 # - We use local timzone. For DTE calculations we should use exchange timezone?
 #   Also check ib_async.util.time_to_tws().
-# - print() -> console.print()
+# - Check if print() -> console.print() is complete.
 # - Add to options output:
 #   - delta, gamma, theta, vega values
 #   - list notional value of all stock option short puts if assigned
@@ -61,7 +61,7 @@
 # - Warn if margin is above certain level. No new (option) positions above a certain level.
 #   Close contracts above a certain level?
 # - allow different sorting strategies for overview pages
-# - Should large numbers use "." as thousand separator? Check en_US locale.
+# - Should large numbers use '.' as thousand separator? Check en_US locale.
 # - Output time of last data update from TWS into overview pages.
 # - Allow refresh of portfolio overview data.
 # - Add cash-like symbols to amount of optional cash: SGOV/BIL, US-T-Bills, TLT...
@@ -203,14 +203,14 @@ def print_data(value: float) -> str:
     #if value >= 980000:
     #    return locale.format_string('%d', round(value / 1000), grouping=True) + 'T'
     return locale.format_string('%d', round(value), grouping=True)
-    #return f"{value:n}"
+    #return f'{value:n}'
 
 # Debugging output of accountSummary:
-def printAccountSummary(accountSummary: list[AccountValue]) -> None:
-    print()
-    print('Account Summary:')
+def printAccountSummary(console: Console, accountSummary: list[AccountValue]) -> None:
+    console.print()
+    console.print('Account Summary:')
     for a in accountSummary:
-        print(a)
+        console.print(a)
 
 # Extract key data from accountSummary:
 def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -> list[tuple[str,
@@ -228,7 +228,7 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
                 cash = float(p.value)
                 cash_str = print_data(cash) + get_currency_symbol(p.currency)
             elif p.tag == 'Cushion':
-                # Handle IBKR returning cushion as percentage (e.g., "95.2")
+                # Handle IBKR returning cushion as percentage (e.g., '95.2')
                 cushion_val = float(p.value)
                 #if cushion_val > 1.0:
                 #    cushion_val /= 100.0
@@ -245,7 +245,7 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
 def showAccountSummary(console: Console, accounts: list[str],
     accountSummary: list[AccountValue]) -> None:
     if verbose >= 3:
-        printAccountSummary(accountSummary)
+        printAccountSummary(console, accountSummary)
     table = Table(title='Account Summary')
     if len(accounts) > 1:
         accounts = accounts.copy()
@@ -270,7 +270,7 @@ def showAccountSummary(console: Console, accounts: list[str],
     console.print(Panel(table))
     for (account, nav, margin, margin_str, cash, cash_percent) in accountDetails:
         if margin >= MarginRed:
-            console.print(f"[bold red]Warning: Account {account} uses margin of {margin_str}.[/]")
+            console.print(f'[bold red]Warning: Account {account} uses margin of {margin_str}.[/]')
 
 # Store market price and greeks of instruments into a dictionary:
 data_cache: dict[tuple[int, str], float] = {}
@@ -293,7 +293,7 @@ def getGreeksCache(name: str, num: int) -> OptionComputation | None:
         return greeks_cache[(num, name)]
     return None
 
-# Strip ".0" at end of string:
+# Strip '.0' at end of string:
 def strip_decimal_zero(value: str) -> str:
     return value[:-2] if value.endswith('.0') else value
     #return f'{float(value):g}'
@@ -387,11 +387,11 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
     return (avg_daily_theta_decay, dte, underlying_price)
 
 # Debug output of portfolio data:
-def showPortfolioDebug(portfolio: list[PortfolioItem]) -> None:
-    print()
-    print('Portfolio:')
+def showPortfolioDebug(console: Console, portfolio: list[PortfolioItem]) -> None:
+    console.print()
+    console.print('Portfolio:')
     for p in portfolio:
-        print(p)
+        console.print(p)
 
 # Sum up values within individual portfolio items:
 def accumulate_values(d: dict[str, list[float]], values: list[float] | tuple[float],
@@ -467,7 +467,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         if p.contract.currency and p.contract.currency != 'USD'}))
     # XXX Add some base currency here to the list, e.g. EURUSD.
     for pair in needed_currencies:
-        symbol = f"{pair}USD" if pair in USD_QUOTE else f"USD{pair}"
+        symbol = f'{pair}USD' if pair in USD_QUOTE else f'USD{pair}'
         contracts.append(Forex(symbol)) # XXX exchange='IDEALPRO'
         #warn_once(logger, f'Fetching forex market price for {symbol}.')
     # add all (future) options to get greeks:
@@ -667,7 +667,8 @@ def showPortfolio(console: Console, accounts: list[str],
         console.print(Panel(table))
 
 # Output list of options which expire in less than 'dte' days:
-def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: int) -> None:
+def ShowLessThanDTE(console: Console, accounts: list[str], portfolio: list[PortfolioItem],
+                    dte: int) -> None:
     for account in accounts:
         pf: list[PortfolioItem] = []
         for pi in portfolio:
@@ -679,14 +680,14 @@ def ShowLessThanDTE(accounts: list[str], portfolio: list[PortfolioItem], dte: in
                 pf.append(pi)
         if not pf:
             continue
-        print()
-        print(f'List all options that expire in {dte} DTE or less for account {account}:')
+        console.print()
+        console.print(f'List all options that expire in {dte} DTE or less for account {account}:')
         for p in pf:
-            print(f'{getPosition(p)} {getName(p.contract)} ({getDTE(p.contract)} DTE)')
-        print()
+            console.print(f'{getPosition(p)} {getName(p.contract)} ({getDTE(p.contract)} DTE)')
+        console.print()
 
 # Output list of options which are ITM (In The Money):
-def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
+def ShowITM(console: Console, accounts: list[str], portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
         pf: list[tuple[PortfolioItem, float | None]] = []
         for pi in portfolio:
@@ -706,19 +707,20 @@ def ShowITM(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
                 pf.append((pi, underlying_price))
         if not pf:
             continue
-        print()
-        print(f'List all In The Money (ITM) options for account {account}:')
+        console.print()
+        console.print(f'List all In The Money (ITM) options for account {account}:')
         for (p, undl_price) in pf:
             curr = get_currency_symbol(p.contract.currency)
             s = format_float(undl_price, curr)
-            print(f'{getPosition(p)} {getName(p.contract)} with underlying price {s}')
-        print()
+            console.print(f'{getPosition(p)} {getName(p.contract)} with underlying price {s}')
+        console.print()
 
 # If all short puts get assigned, what amount of cash (notional value) would be needed
 # to pay all these assignments?
 # XXX Maybe list all individual short puts with their needed cash sum:
 # XXX List notional value of all currency future options and futures.
-def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> None:
+def ShowNotionalValue(console: Console, accounts: list[str],
+                      portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
         sum_sp: dict[str, list[float]] = {} # sum of all short puts if assigned
         for pi in portfolio:
@@ -736,22 +738,23 @@ def ShowNotionalValue(accounts: list[str], portfolio: list[PortfolioItem]) -> No
         # XXX Also add open trades into notional value calculation.
         if not sum_sp:
             continue
-        print()
+        console.print()
         for (curr, summe) in sum_sp.items():
             if summe[0] == 0.0:
                 continue
             # XXX Show also needed cash as percentage of all available cash:
             #cash_percent = f'{-summe[0] * 100.0 / all_cash:.0f}%' if all_cash > 0.0 else ''
             summe_str = format_float(-summe[0], curr)
-            print(f'Cash needed if all short puts get assigned for account {account}: {summe_str}')
-        print()
+            console.print(
+                f'Cash needed if all short puts get assigned for account {account}: {summe_str}')
+        console.print()
 
 # Debug output for accountValues:
-def printAccountValues(accountValues: list[AccountValue]) -> None:
-    print()
-    print('Account Values:')
+def printAccountValues(console: Console, accountValues: list[AccountValue]) -> None:
+    console.print()
+    console.print('Account Values:')
     for a in accountValues:
-        print(a)
+        console.print(a)
 
 # Summary function to output all portfolio information of the account:
 async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = None,
@@ -765,7 +768,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
 
     if verbose >= 3:
         accountValues = ib.accountValues()
-        printAccountValues(accountValues)
+        printAccountValues(console, accountValues)
 
     # To refresh use: reqAccountUpdatesAsync()
     #portfolio = await ib.portfolioAsync() # XXX
@@ -775,45 +778,45 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
         logger.error('Could not read portfolio.')
         return
     if verbose >= 3:
-        showPortfolioDebug(portfolio)
+        showPortfolioDebug(console, portfolio)
 
     await getPortfolioData(ib, portfolio)
     showPortfolio(console, accounts, portfolio)
     showPortfolio(console, accounts, portfolio, non_options=True)
     showPortfolio(console, accounts, portfolio, future_options=True)
     showPortfolio(console, accounts, portfolio, options=True)
-    ShowLessThanDTE(accounts, portfolio, 21)
-    ShowLessThanDTE(accounts, portfolio, 6)
-    ShowITM(accounts, portfolio)
-    ShowNotionalValue(accounts, portfolio)
+    ShowLessThanDTE(console, accounts, portfolio, 21)
+    ShowLessThanDTE(console, accounts, portfolio, 6)
+    ShowITM(console, accounts, portfolio)
+    ShowNotionalValue(console, accounts, portfolio)
     showPortfolio(console, accounts, portfolio, currency_options=True)
 
     # Less information compared to showPortfolio():
     if verbose >= 3:
         positions = ib.positions()
         if positions:
-            print()
-            print('Positions:')
+            console.print()
+            console.print('Positions:')
             for p in positions:
-                print(p)
+                console.print(p)
 
     trades = ib.trades()
     if trades:
-        print()
-        print('Trades:')
+        console.print()
+        console.print('Trades:')
         for t in trades:
-            print(t)
+            console.print(t)
 
     orders = ib.orders()
     if orders:
-        print()
-        print('Orders:')
+        console.print()
+        console.print('Orders:')
         for o in orders:
-            print(o)
+            console.print(o)
     #orders = ib.openTrades()
-    #print(f'\nOpen Orders: {len(orders)}')
+    #console.print(f'\nOpen Orders: {len(orders)}')
     #for trade in orders:
-    #    print(f'{trade.contract.symbol}: {trade.order.action} {trade.order.totalQuantity}')
+    #    console.print(f'{trade.contract.symbol}: {trade.order.action} {trade.order.totalQuantity}')
 
 # argument parser:
 def create_parser() -> argparse.ArgumentParser:
@@ -952,7 +955,7 @@ async def main(argv: list[str]) -> None:
 
     #await asyncio.sleep(1)
 
-    console = Console()
+    console = Console(highlight=False)
 
     # https://interactivebrokers.github.io/tws-api/market_data_type.html
     # 1 == live, realtime with subscriptions
@@ -1004,9 +1007,9 @@ async def main(argv: list[str]) -> None:
 
     #active_tickers = ib.tickers()
     #if active_tickers:
-    #logger.info(f"Cancel {len(active_tickers)} subscripions:")
+    #logger.info(f'Cancel {len(active_tickers)} subscripions:')
     #for ticker in active_tickers:
-    #    logger.info(f"Cancel subscription for {ticker.contract.symbol}.")
+    #    logger.info(f'Cancel subscription for {ticker.contract.symbol}.')
     #    try:
     #        ib.cancelMktData(ticker.contract)
     #    except:
