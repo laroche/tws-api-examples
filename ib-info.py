@@ -488,14 +488,17 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     #for i in range(len(contracts)):
     #    contract = results[i]
     #    ticker = tickers[i]
+    #    if contract is None or ticker is None:
+    #        continue
     results = await ib.qualifyContractsAsync(*contracts)
     # Filter out None results and track original indices
+    # XXX Warn about None results.
     valid: list[Any] = [(c, r) for c, r in zip(contracts, results) if r is not None]
     if not valid:
         return
     tickers = await ib.reqTickersAsync(*[r for _, r in valid])
     for (_, contract), ticker in zip(valid, tickers):
-        if contract is None or ticker is None:
+        if ticker is None:
             continue
         name = getName(contract)
         if isinstance(contract, (Stock, Future, Forex)):
