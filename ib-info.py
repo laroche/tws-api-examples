@@ -483,6 +483,10 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     if not contracts:
         return
     # XXX Is the limit of 50 messages/second requiring batching into smaller chunks?
+    #logger.warning(f'{len(contracts)} contracts requested.')
+    #if len(contracts) >= 50:
+    #    logger.warning(
+    #        f'Might run into problems requesting more than 50 messages/second from IBKR.')
     #results: list[Any] = await ib.qualifyContractsAsync(*contracts)
     #tickers: list[Any] = await ib.reqTickersAsync(*results)
     #for i in range(len(contracts)):
@@ -492,7 +496,8 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     #        continue
     results = await ib.qualifyContractsAsync(*contracts)
     # Filter out None results and track original indices
-    # XXX Warn about None results.
+    for (c, r) in [(c, r) for c, r in zip(contracts, results) if r is None]:
+        logger.warning(f'ib.qualifyContractsAsync() failed for {getName(c)}')
     valid: list[Any] = [(c, r) for c, r in zip(contracts, results) if r is not None]
     if not valid:
         return
