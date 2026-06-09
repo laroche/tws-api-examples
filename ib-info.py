@@ -41,6 +41,7 @@
 # - Check if print() -> console.print() is complete.
 # - Add to options output:
 #   - delta, gamma, theta, vega values
+#     - percent distance from current underlying
 #   - list notional value of all stock option short puts if assigned
 #     Show also needed cash as percentage of all available cash.
 #     Also account for spreads instead of naked puts.
@@ -51,6 +52,7 @@
 #   - list all short call options not covered by stock
 #   - list weighted average strike price for Put/Call Short Options per underlying
 #   - grouping of complex (future) options, advise on next steps for strategies
+#     - spread width and percent distance from underlying to be ITM (nearest strike?)
 #   - also add historical prices for options, also check other data sources
 #   - If no market data is available, should we ask for historical data?
 #   - for option prices, also check option equivalent prices as comparison
