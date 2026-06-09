@@ -744,6 +744,8 @@ def ShowITM(console: Console, accounts: list[str], portfolio: list[PortfolioItem
 # XXX List notional value of all currency future options and futures.
 def ShowNotionalValue(console: Console, accounts: list[str],
                       portfolio: list[PortfolioItem]) -> None:
+    # Output a first blank line and a last blank line:
+    first_output = False
     for account in accounts:
         sum_sp: dict[str, list[float]] = {} # sum of all short puts if assigned
         for pi in portfolio:
@@ -761,15 +763,20 @@ def ShowNotionalValue(console: Console, accounts: list[str],
         # XXX Also add open trades into notional value calculation.
         if not sum_sp:
             continue
-        console.print()
         for (curr, summe) in sum_sp.items():
             if summe[0] == 0.0:
                 continue
             # XXX Show also needed cash as percentage of all available cash:
             #cash_percent = f'{-summe[0] * 100.0 / all_cash:.0f}%' if all_cash > 0.0 else ''
+            # Output first blank line if no output has been done until now:
+            if not first_output:
+                first_output = True
+                console.print()
             summe_str = format_float(-summe[0], curr)
             console.print(
                 f'Cash needed if all short puts get assigned for account {account}: {summe_str}')
+    # Output one last blank line if any output has been done:
+    if first_output:
         console.print()
 
 # Debug output for accountValues:
