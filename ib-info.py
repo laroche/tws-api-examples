@@ -374,7 +374,7 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
     if gr is not None and gr.theta is not None:
         daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
         return (daily_theta_decay, dte, underlying_price)
-    # Compute theta decay ourselves:
+    # Compute (average/dumb) theta decay ourselves:
     #oldvalue = value
     if underlying_price is not None:
         # subtract intrinsic value
@@ -579,7 +579,10 @@ def showPortfolio(console: Console, accounts: list[str],
             table.add_column('average price', justify='right')
         if show_options_details:
             table.add_column('DTE', justify='right')
-            table.add_column('daily theta', justify='right')
+            if UseMarketDataSubscription:
+                table.add_column('daily theta', justify='right')
+            else:
+                table.add_column('avg daily theta', justify='right')
             table.add_column('price undly', justify='right')
             table.add_column('ITM', justify='right')
             if UseMarketDataSubscription:
