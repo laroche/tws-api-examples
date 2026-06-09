@@ -671,25 +671,42 @@ def showPortfolio(console: Console, accounts: list[str],
                 show_options_details, show_prices, table, '', None)
         console.print(Panel(table))
 
+def getUnderlyingPrice(contract: Contract) -> float | None:
+    name = getName(contract)
+    num = getDataCacheNum(contract)
+    gr = getGreeksCache(name, num)
+    if gr is not None and gr.undPrice is not None:
+        return gr.undPrice
+    # Stock or Future?
+    num = 1 if isinstance(contract, Option) else 4
+    return getMarketPrice(contract.symbol, num)
+
 # Output list of options which expire in less than 'dte' days:
 def ShowLessThanDTE(console: Console, accounts: list[str], portfolio: list[PortfolioItem],
                     dte: int) -> None:
     for account in accounts:
-        pf: list[PortfolioItem] = []
+        pf: list[tuple[PortfolioItem, float | None]] = []
         for pi in portfolio:
             if pi.account != account or not isinstance(pi.contract, (Option, FuturesOption)):
                 continue
             # This might also show already expired options.
             #if getDTE(pi.contract) <= dte:
             if 0 <= getDTE(pi.contract) <= dte:
-                pf.append(pi)
+                underlying_price = getUnderlyingPrice(pi.contract)
+                pf.append((pi, underlying_price))
         if not pf:
             continue
-        console.print()
-        console.print(f'List all options that expire in {dte} DTE or less for account {account}:')
-        for p in pf:
-            console.print(f'{getPosition(p)} {getName(p.contract)} ({getDTE(p.contract)} DTE)')
-        console.print()
+        table = Table(title=f'List all options that expire in {dte} DTE or less for account {account}')
+        table.add_column('pos.', justify='right')
+        table.add_column('instrument')
+        table.add_column('DTE', justify='right')
+        table.add_column('undl. price', justify='right')
+        for (p, undl_price) in pf:
+            curr = get_currency_symbol(p.contract.currency)
+            s = format_float(undl_price, curr)
+            table.add_row(f'{getPosition(p)}', f'{getName(p.contract)}', f'{getDTE(p.contract)}',
+                          f'{s}')
+        console.print(Panel(table))
 
 # Output list of options which are ITM (In The Money):
 def ShowITM(console: Console, accounts: list[str], portfolio: list[PortfolioItem]) -> None:
@@ -699,26 +716,22 @@ def ShowITM(console: Console, accounts: list[str], portfolio: list[PortfolioItem
             ct = pi.contract
             if pi.account != account or not isinstance(ct, (Option, FuturesOption)):
                 continue
-            name = getName(ct)
-            num = getDataCacheNum(ct)
-            gr = getGreeksCache(name, num)
-            if gr is not None and gr.undPrice is not None:
-                underlying_price: float | None = gr.undPrice
-            else:
-                # Stock or Future?
-                num = 1 if isinstance(ct, Option) else 4
-                underlying_price = getMarketPrice(ct.symbol, num)
+            underlying_price = getUnderlyingPrice(ct)
             if isITM(ct, underlying_price):
                 pf.append((pi, underlying_price))
         if not pf:
             continue
-        console.print()
-        console.print(f'List all In The Money (ITM) options for account {account}:')
+        table = Table(title=f'List all In The Money (ITM) options for account {account}')
+        table.add_column('pos.', justify='right')
+        table.add_column('instrument')
+        table.add_column('DTE', justify='right')
+        table.add_column('undl. price', justify='right')
         for (p, undl_price) in pf:
             curr = get_currency_symbol(p.contract.currency)
             s = format_float(undl_price, curr)
-            console.print(f'{getPosition(p)} {getName(p.contract)} with underlying price {s}')
-        console.print()
+            table.add_row(f'{getPosition(p)}', f'{getName(p.contract)}', f'{getDTE(p.contract)}',
+                          f'{s}')
+        console.print(Panel(table))
 
 # If all short puts get assigned, what amount of cash (notional value) would be needed
 # to pay all these assignments?
