@@ -190,6 +190,14 @@ currency_conversion: dict[str, str] = {
 def get_currency_symbol(curr: str) -> str:
     return currency_conversion.get(curr, curr)
 
+# XXX How can we automate detecting this list? Add SPXW?
+INDEX_OPTIONS: list[str] = ['SPX','RUT','NDX']
+
+def isIndexOption(contract: Contract) -> bool:
+    if isinstance(contract, Option) and contract.symbol in INDEX_OPTIONS:
+        return True
+    return False
+
 # Format a float output, smaller numbers get 4 decimals:
 def format_float(f: float | None, curr: str) -> str:
     if f is None:
@@ -540,15 +548,18 @@ def showPortfolio(console: Console, accounts: list[str],
         for pi in portfolio:
             if pi.account != account:
                 continue
-            if non_options and isinstance(pi.contract, (FuturesOption, Option)):
+            ct = pi.contract
+            if non_options and isinstance(ct, (FuturesOption, Option)):
                 continue
-            if future_options and (not isinstance(pi.contract, FuturesOption)
-                or pi.contract.symbol in CURRENCY_SYMBOLS):
-                continue
-            if options and not isinstance(pi.contract, Option):
-                continue
-            if currency_options and (not isinstance(pi.contract, FuturesOption)
-                or pi.contract.symbol not in CURRENCY_SYMBOLS):
+            if future_options:
+                if ((not isinstance(ct, FuturesOption) and not isIndexOption(ct)) or
+                    ct.symbol in CURRENCY_SYMBOLS):
+                    continue
+            if options:
+                if not isinstance(ct, Option) or isIndexOption(ct):
+                    continue
+            if currency_options and (not isinstance(ct, FuturesOption)
+                or ct.symbol not in CURRENCY_SYMBOLS):
                 continue
             pf.append(pi)
         if not pf:
@@ -560,7 +571,7 @@ def showPortfolio(console: Console, accounts: list[str],
             table = Table(title=f'portfolio (without options) {account}')
             show_prices = True
         elif future_options:
-            table = Table(title=f'future options portfolio {account}')
+            table = Table(title=f'future/index options portfolio {account}')
             show_options_details = True
         elif options:
             table = Table(title=f'options portfolio {account}')
@@ -753,8 +764,7 @@ def ShowNotionalValue(console: Console, accounts: list[str],
             if pi.account != account or not isinstance(ct, Option):
                 continue
             # We do not include futures option and also not index option:
-            # XXX How can we automate detecting this list? SPXW,RUT,NDX?
-            if ct.symbol in ('SPX',):
+            if isIndexOption(ct):
                 continue
             if ct.right != 'P' or pi.position >= 0.0: # not short put
                 continue
