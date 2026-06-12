@@ -485,6 +485,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         contracts.append(Forex(symbol)) # XXX exchange='IDEALPRO'
         #warn_once(logger, f'Fetching forex market price for {symbol}.')
     # add all (future) options to get greeks:
+    extra: list[tuple[str, str]] = []
     for pi in portfolio:
         ct = pi.contract
         if isinstance(ct, (Option, FuturesOption)):
@@ -493,6 +494,15 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
             if (num, name) not in cache and (num, name) not in greeks_cache:
                 cache[(num, name)] = True
                 contracts.append(ct)
+        # XXX This market price is only needed if option greeks are not provided
+        # (which can also contain the underlying market price info).
+        if isinstance(ct, Option) and (1, ct.symbol) not in data_cache:
+            if isIndexOption(ct) is False:
+                if (ct.symbol, ct.currency) not in extra:
+                    extra.append((ct.symbol, ct.currency))
+    for (symbol, currency) in extra:
+        #logger.warning(f'Fetching market price for {symbol}')
+        contracts.append(Stock(symbol, 'SMART', currency))
     # get data from IB:
     if not contracts:
         return
@@ -736,7 +746,8 @@ def ShowLessThanDTE(console: Console, accounts: list[str], portfolio: list[Portf
                 pf.append((pi, underlying_price))
         if not pf:
             continue
-        table = Table(title=f'List all options that expire in {dte} DTE or less for account {account}')
+        table = Table(
+            title=f'List all options that expire in {dte} DTE or less for account {account}')
         table.add_column('pos.', justify='right')
         table.add_column('instrument')
         table.add_column('DTE', justify='right')
