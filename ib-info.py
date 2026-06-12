@@ -83,6 +83,7 @@ from typing import Any
 from functools import lru_cache
 import sys
 import os
+import time
 import locale
 import logging
 import datetime
@@ -98,6 +99,9 @@ from rich.table import Table
 # How verbose should logging be?
 # Check with params --verbose/-v, --debug, --quiet.
 verbose: int = 1
+
+# Show runtime information for requests to IBKR:
+ShowTime: bool = False
 
 # Output configuration:
 # Limit year of expiration date to 2 digits only.
@@ -504,18 +508,30 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     #    ticker = tickers[i]
     #    if contract is None or ticker is None:
     #        continue
+    #await asyncio.sleep(2)
+    if ShowTime:
+        starttime = time.time()
     results = await ib.qualifyContractsAsync(*contracts)
+    if ShowTime:
+        print(
+         f'runtime for qualifyContractsAsync({len(contracts)}): {time.time() - starttime:.2f} sec')
     # Filter out None results and track original indices
     for (c, r) in [(c, r) for c, r in zip(contracts, results) if r is None]:
         logger.warning(f'ib.qualifyContractsAsync() failed for {getName(c)}')
     valid: list[Any] = [(c, r) for c, r in zip(contracts, results) if r is not None]
     if not valid:
         return
+    #await asyncio.sleep(2)
+    if ShowTime:
+        starttime = time.time()
     tickers = await ib.reqTickersAsync(*[r for _, r in valid])
+    if ShowTime:
+        print(f'runtime for reqTickersAsync({len(valid)}): {time.time() - starttime:.2f} sec')
     for (_, contract), ticker in zip(valid, tickers):
-        if ticker is None:
-            continue
         name = getName(contract)
+        if ticker is None:
+            logger.warning(f'ib.reqTickersAsync() failed for {name}')
+            continue
         if isinstance(contract, (Stock, Future, Forex)):
             marketprice = ticker.marketPrice()
             # XXX Should we also check ticker.midpoint() or ticker.last?
@@ -534,6 +550,14 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
             gr = ticker.modelGreeks
             if gr is None:
                 warn_once(logger, f'Not getting greeks for {name}.')
+                #print('askGreeks:', ticker.askGreeks)
+                #print('bidGreeks:', ticker.bidGreeks)
+                #print('lastGreeks:', ticker.lastGreeks)
+                #print('modelGreeks:', ticker.modelGreeks)
+                #await asyncio.sleep(1)
+                #gr = ticker.modelGreeks
+                #if gr is None:
+                #    warn_once(logger, f'Still not getting greeks for {name}.')
             else:
                 #print(name, 'has delta of', gr.delta)
                 num = getDataCacheNum(contract)
@@ -910,6 +934,11 @@ Examples:
         action='store_true',
         dest='two_digit_years',
         help='Show year output only with 2 digits instead of 4')
+    # Runtime info:
+    parser.add_argument('--runtime-info', '-t',
+        action='store_true',
+        dest='ShowTime',
+        help='Output runtime info on calling for IBKR data')
     # Verbosity control
     verbosity_group = parser.add_mutually_exclusive_group()
     verbosity_group.add_argument('-v', '--verbose',
@@ -942,7 +971,7 @@ async def safe_connect(host: str, port: int, client_id: int, readonly: bool, acc
 
 async def main(argv: list[str]) -> None:
     global verbose, DoNotShowCurrentYear, ShowYearWithTwoDigits, cur_year
-    global UseMarketDataSubscription, delayed_market_data
+    global UseMarketDataSubscription, delayed_market_data, ShowTime
 
     try:
         locale.setlocale(locale.LC_ALL, '')
@@ -958,6 +987,7 @@ async def main(argv: list[str]) -> None:
     args = parser.parse_args(argv)
     ShowYearWithTwoDigits = args.two_digit_years
     DoNotShowCurrentYear = args.short_expire_format
+    ShowTime = args.ShowTime
     if DoNotShowCurrentYear:
         today = datetime.date.today()
         cur_year = today.strftime('%Y') # today.year
