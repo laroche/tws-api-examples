@@ -199,11 +199,12 @@ currency_conversion: dict[str, str] = {
 def get_currency_symbol(curr: str) -> str:
     return currency_conversion.get(curr, curr)
 
-# XXX How can we automate detecting this list? Add SPXW?
-INDEX_OPTIONS: list[str] = ['SPX','RUT','NDX']
+# XXX How can we automate detecting this list?
+US_INDEX_OPTIONS: set[str] = {'SPX', 'RUT', 'NDX'}
+EUREX_INDEX_OPTIONS: set[str] = {'DAX', 'V1X'}
 
 def isIndexOption(contract: Contract) -> bool:
-    if isinstance(contract, Option) and contract.symbol in INDEX_OPTIONS:
+    if isinstance(contract, Option) and contract.symbol in US_INDEX_OPTIONS:
         return True
     return False
 
@@ -510,11 +511,10 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                 extra.append((ct.symbol, ct.currency))
     for (symbol, currency) in extra:
         #logger.warning(f'Fetching market price for {symbol}')
-        if symbol in INDEX_OPTIONS:
-            if symbol in ('DAX', 'V1X'):
-                contracts.append(Index(symbol, 'EUREX', currency))
-            else:
-                contracts.append(Index(symbol, 'CBOE', currency))
+        if symbol in US_INDEX_OPTIONS:
+            contracts.append(Index(symbol, 'CBOE', currency))
+        elif symbol in EUREX_INDEX_OPTIONS:
+            contracts.append(Index(symbol, 'EUREX', currency))
         else:
             contracts.append(Stock(symbol, 'SMART', currency))
     # get data from IB:
