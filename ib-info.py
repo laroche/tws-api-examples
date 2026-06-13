@@ -90,7 +90,7 @@ import datetime
 import argparse
 import asyncio
 from ib_async import (IB, FuturesOption, Option, AccountValue,
-    PortfolioItem, Contract, Stock, Future, Forex, OptionComputation, util)
+    PortfolioItem, Contract, Stock, Index, Future, Forex, OptionComputation, util)
 
 from rich.console import Console
 from rich.panel import Panel
@@ -137,8 +137,12 @@ def warn_once(mylogger: logging.Logger, msg: str) -> None:
 # to True.
 # Both can be changed with param --use-market-data/-m:
 UseMarketDataSubscription: bool = False
-# Use delayed market data instead of realtime data?
-delayed_market_data: bool = True
+# https://interactivebrokers.github.io/tws-api/market_data_type.html
+# 1 == live, realtime with subscriptions
+# 2 == frozen
+# 3 == delayed
+# 4 == delayed frozen
+MarketDataType: int = 2
 
 # XXX How to detect base currency?
 #BASE = '€'
@@ -379,7 +383,7 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
             num = 1 if isinstance(ct, Option) else 4
             addMarketPrice(ct.symbol, num, underlying_price)
     else:
-        # Stock or Future?
+        # Stock/Index or Future?
         num = 1 if isinstance(ct, Option) else 4
         underlying_price = getMarketPrice(ct.symbol, num)
     if value is None:
@@ -452,6 +456,8 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
 def getDataCacheNum(contract: Contract) -> int:
     if isinstance(contract, Stock):
         return 1
+    if isinstance(contract, Index):
+        return 1
     if isinstance(contract, Option):
         return 2
     if isinstance(contract, FuturesOption):
@@ -487,6 +493,8 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     # add all (future) options to get greeks:
     extra: list[tuple[str, str]] = []
     for pi in portfolio:
+        #if len(contracts) >= 10:
+        #    break
         ct = pi.contract
         if isinstance(ct, (Option, FuturesOption)):
             name = getName(ct)
@@ -497,12 +505,17 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         # XXX This market price is only needed if option greeks are not provided
         # (which can also contain the underlying market price info).
         if isinstance(ct, Option) and (1, ct.symbol) not in data_cache:
-            if isIndexOption(ct) is False:
-                if (ct.symbol, ct.currency) not in extra:
-                    extra.append((ct.symbol, ct.currency))
+            if (ct.symbol, ct.currency) not in extra:
+                extra.append((ct.symbol, ct.currency))
     for (symbol, currency) in extra:
         #logger.warning(f'Fetching market price for {symbol}')
-        contracts.append(Stock(symbol, 'SMART', currency))
+        if symbol in INDEX_OPTIONS:
+            if symbol in ('DAX', 'V1X'):
+                contracts.append(Index(symbol, 'EUREX', currency))
+            else:
+                contracts.append(Index(symbol, 'CBOE', currency))
+        else:
+            contracts.append(Stock(symbol, 'SMART', currency))
     # get data from IB:
     if not contracts:
         return
@@ -542,15 +555,19 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         if ticker is None:
             logger.warning(f'ib.reqTickersAsync() failed for {name}')
             continue
-        if isinstance(contract, (Stock, Future, Forex)):
+        if isinstance(contract, (Stock, Index, Future, Forex)):
             marketprice = ticker.marketPrice()
             # XXX Should we also check ticker.midpoint() or ticker.last?
             if marketprice is None or util.isNan(marketprice):
                 warn_once(logger, f'Not getting market price for {name}.')
+                #print(contract)
+                #print(f'{ticker.last} {ticker.midpoint()}')
             else:
                 #print(name, 'has market price', marketprice)
                 num = getDataCacheNum(contract)
                 addMarketPrice(name, num, marketprice)
+                if isinstance(contract, Index):
+                    logger.warning(f'Index option market data received: {name} : {num} : {marketprice}.')
                 if isinstance(contract, Forex):
                     pair = name + 'USD'
                     #currency_prices[pair] = marketprice
@@ -727,7 +744,7 @@ def getUnderlyingPrice(contract: Contract) -> float | None:
     gr = getGreeksCache(name, num)
     if gr is not None and gr.undPrice is not None:
         return gr.undPrice
-    # Stock or Future?
+    # Stock/Index or Future?
     num = 1 if isinstance(contract, Option) else 4
     return getMarketPrice(contract.symbol, num)
 
@@ -796,10 +813,10 @@ def ShowNotionalValue(console: Console, accounts: list[str],
         sum_sp: dict[str, list[float]] = {} # sum of all short puts if assigned
         for pi in portfolio:
             ct = pi.contract
-            if pi.account != account or not isinstance(ct, Option):
+            if pi.account != account:
                 continue
-            # We do not include futures option and also not index option:
-            if isIndexOption(ct):
+            # Only options, but no future and no index options:
+            if not isinstance(ct, Option) or isIndexOption(ct):
                 continue
             if ct.right != 'P' or pi.position >= 0.0: # not short put
                 continue
@@ -909,8 +926,15 @@ The client id must be unique per connection/client:
 - client_id 0 is getting all transactions, including also TWS.
 - client_id 1 (configurable) is getting transactions from other client_ids, but not TWS.
 
+Market Data Type:
+- 1 == live, realtime with subscriptions
+- 2 == frozen
+- 3 == delayed
+- 4 == delayed frozen
+
 Examples:
   python ib-info.py --host 127.0.0.1 --port 7496 --use-market-data
+  python ib-info.py --host 127.0.0.1 --port 7496 --use-market-data --market-data-type=1
   python ib-info.py --host 127.0.0.1 --port 7496 --account=U12345
   python ib-info.py --host 127.0.0.1 --port 7496 --short-expire-format
   python ib-info.py --host 127.0.0.1 --port 7496 --debug
@@ -936,6 +960,10 @@ Examples:
     parser.add_argument('--use-market-data', '-m',
         action='store_true',
         help='Use market data from IBKR (default: False)')
+    parser.add_argument('--market-data-type',
+        type=int,
+        default=2,
+        help='market data type (1=live, 2=delayed)')
     # Output formatting
     parser.add_argument('--short-expire-format',
         action='store_true',
@@ -982,7 +1010,7 @@ async def safe_connect(host: str, port: int, client_id: int, readonly: bool, acc
 
 async def main(argv: list[str]) -> None:
     global verbose, DoNotShowCurrentYear, ShowYearWithTwoDigits, cur_year
-    global UseMarketDataSubscription, delayed_market_data, ShowTime
+    global UseMarketDataSubscription, MarketDataType, ShowTime
 
     try:
         locale.setlocale(locale.LC_ALL, '')
@@ -1010,7 +1038,7 @@ async def main(argv: list[str]) -> None:
         verbose = args.verbose
     if args.use_market_data:
         UseMarketDataSubscription = True
-        delayed_market_data = False
+    MarketDataType = args.market_data_type
 
     #config = readConfig('ib-info.ini')
 
@@ -1038,12 +1066,6 @@ async def main(argv: list[str]) -> None:
 
     console = Console(highlight=False)
 
-    # https://interactivebrokers.github.io/tws-api/market_data_type.html
-    # 1 == live, realtime with subscriptions
-    # 2 == frozen
-    # 3 == delayed
-    # 4 == delayed frozen
-    MarketDataType: int = 4 if delayed_market_data else 1
     ib.reqMarketDataType(MarketDataType)
     #await ib.reqMarketDataTypeAsync(MarketDataType)
 
