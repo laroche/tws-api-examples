@@ -36,6 +36,7 @@
 # - Allow translation of output into different languages.
 # - For currency overview futures are not yet included.
 # - Allow for nice/modern config file.
+# - How to switch between delayed and realtime market data automatically?
 # - We use local timzone. For DTE calculations we should use exchange timezone?
 #   Also check ib_async.util.time_to_tws().
 # - Check if print() -> console.print() is complete.
@@ -557,17 +558,17 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
             continue
         if isinstance(contract, (Stock, Index, Future, Forex)):
             marketprice = ticker.marketPrice()
+            if isinstance(contract, Index) and (marketprice is None or util.isNan(marketprice)):
+                marketprice = ticker.close
             # XXX Should we also check ticker.midpoint() or ticker.last?
             if marketprice is None or util.isNan(marketprice):
                 warn_once(logger, f'Not getting market price for {name}.')
-                #print(contract)
+                #print(ticker)
                 #print(f'{ticker.last} {ticker.midpoint()}')
             else:
                 #print(name, 'has market price', marketprice)
                 num = getDataCacheNum(contract)
                 addMarketPrice(name, num, marketprice)
-                if isinstance(contract, Index):
-                    logger.warning(f'Index option market data received: {name} : {num} : {marketprice}.')
                 if isinstance(contract, Forex):
                     pair = name + 'USD'
                     #currency_prices[pair] = marketprice
@@ -1067,7 +1068,6 @@ async def main(argv: list[str]) -> None:
     console = Console(highlight=False)
 
     ib.reqMarketDataType(MarketDataType)
-    #await ib.reqMarketDataTypeAsync(MarketDataType)
 
     try:
         await showAccounts(ib, console)
@@ -1087,7 +1087,6 @@ async def main(argv: list[str]) -> None:
     #print(calc)
 
     #spx = Index('SPX', 'CBOE')
-
     #chains = ib.reqSecDefOptParams(spx.symbol, '', spx.secType, spx.conId)
     #util.df(chains)
     #chain = next(c for c in chains if c.tradingClass == 'SPX' and c.exchange == 'SMART')
