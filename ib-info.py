@@ -37,6 +37,8 @@
 # - For currency overview futures are not yet included.
 # - Allow for nice/modern config file.
 # - How to switch between delayed and realtime market data automatically?
+# - Add a 'C' to closing prices on the output.
+# - Why is fetching data taking so long?
 # - We use local timzone. For DTE calculations we should use exchange timezone?
 #   Also check ib_async.util.time_to_tws().
 # - Check if print() -> console.print() is complete.
@@ -134,9 +136,8 @@ def warn_once(mylogger: logging.Logger, msg: str) -> None:
 
 # Many subscriptions of market data are only available within the
 # TWS, but not for the (python) API. So by default, we set
-# access to market subscription data to False and delayed market data
-# to True.
-# Both can be changed with param --use-market-data/-m:
+# access to market subscription data to False.
+# Change this with param --use-market-data/-m:
 UseMarketDataSubscription: bool = False
 # https://interactivebrokers.github.io/tws-api/market_data_type.html
 # 1 == live, realtime with subscriptions
@@ -962,8 +963,7 @@ Examples:
         action='store_true',
         help='Use market data from IBKR (default: False)')
     parser.add_argument('--market-data-type',
-        type=int,
-        default=2,
+        type=int, default=2,
         help='market data type (1=live, 2=delayed)')
     # Output formatting
     parser.add_argument('--short-expire-format',
