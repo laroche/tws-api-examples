@@ -421,7 +421,7 @@ def showPortfolioDebug(console: Console, portfolio: list[PortfolioItem]) -> None
         console.print(p)
 
 # Sum up values within individual portfolio items:
-def accumulate_values(d: dict[str, list[float]], values: list[float] | tuple[float],
+def accumulate_values(d: dict[str, list[float]], values: list[float] | tuple[float, ...],
                       currency: str) -> None:
     """Generic accumulator for currency-keyed dictionaries."""
     # Check if we need to add a new currency:
