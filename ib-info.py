@@ -1013,6 +1013,22 @@ async def safe_connect(host: str, port: int, client_id: int, readonly: bool, acc
         raise SystemExit(1) from e
     return ib
 
+async def myapp(args: Any) -> None:
+    ib = None
+    ib = await safe_connect(args.host, args.port, args.client_id, args.readonly, args.account)
+    #if not ib.isConnected():
+    #    logger.error('Not connected: Need to restart TWS/IBG.')
+    #    #sys.exit(1)
+    #    raise SystemExit(1)
+    #await asyncio.sleep(1)
+    console = Console(highlight=False)
+    ib.reqMarketDataType(MarketDataType)
+    try:
+        await showAccounts(ib, console)
+    finally:
+        if ib is not None:
+            ib.disconnect()
+
 async def main(argv: list[str]) -> None:
     global verbose, DoNotShowCurrentYear, ShowYearWithTwoDigits, cur_year
     global UseMarketDataSubscription, MarketDataType, ShowTime
@@ -1059,25 +1075,7 @@ async def main(argv: list[str]) -> None:
         util.logToConsole(logging.DEBUG)
     #util.logToFile('ib.log', logging.WARNING)
 
-    ib = None
-    ib = await safe_connect(args.host, args.port, args.client_id, args.readonly, args.account)
-
-    #if not ib.isConnected():
-    #    logger.error('Not connected: Need to restart TWS/IBG.')
-    #    #sys.exit(1)
-    #    raise SystemExit(1)
-
-    #await asyncio.sleep(1)
-
-    console = Console(highlight=False)
-
-    ib.reqMarketDataType(MarketDataType)
-
-    try:
-        await showAccounts(ib, console)
-    finally:
-        if ib is not None:
-            ib.disconnect()
+    await myapp(args)
 
 
 #tasks = []
