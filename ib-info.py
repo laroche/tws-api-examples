@@ -212,9 +212,8 @@ US_INDEX_OPTIONS: set[str] = {'SPX', 'RUT', 'NDX'}
 EUREX_INDEX_OPTIONS: set[str] = {'DAX', 'V1X'}
 
 def isIndexOption(contract: Contract) -> bool:
-    if isinstance(contract, Option) and contract.symbol in US_INDEX_OPTIONS:
-        return True
-    return False
+    return (isinstance(contract, Option) and 
+        (contract.symbol in US_INDEX_OPTIONS or contract.symbol in EUREX_INDEX_OPTIONS))
 
 # Format a float output, smaller numbers get 4 decimals:
 def format_float(f: float | None, curr: str) -> str:
