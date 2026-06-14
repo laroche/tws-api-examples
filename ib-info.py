@@ -916,6 +916,38 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     #for trade in orders:
     #    console.print(f'{trade.contract.symbol}: {trade.order.action} {trade.order.totalQuantity}')
 
+# Create a network connection to TWS/IBG:
+async def safe_connect(host: str, port: int, client_id: int, readonly: bool, account: str) -> IB:
+    ib = IB()
+    try:
+        await ib.connectAsync(host, port, clientId=client_id, readonly=readonly, account=account)
+    except ConnectionRefusedError as e:
+        logger.error('API connection failed: ConnectionRefusedError: '
+                     'Make sure API port on TWS/IBG is open.')
+        #sys.exit(1)
+        raise SystemExit(1) from e
+    except Exception as e:
+        logger.exception('Unexpected error connecting to IB:')
+        #sys.exit(1)
+        raise SystemExit(1) from e
+    return ib
+
+async def myapp(args: Any) -> None:
+    ib = None
+    ib = await safe_connect(args.host, args.port, args.client_id, args.readonly, args.account)
+    #if not ib.isConnected():
+    #    logger.error('Not connected: Need to restart TWS/IBG.')
+    #    #sys.exit(1)
+    #    raise SystemExit(1)
+    #await asyncio.sleep(1)
+    console = Console(highlight=False)
+    ib.reqMarketDataType(MarketDataType)
+    try:
+        await showAccounts(ib, console)
+    finally:
+        if ib is not None:
+            ib.disconnect()
+
 # argument parser:
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -996,38 +1028,6 @@ Examples:
         action='store_true',
         help='Suppress output (opposite of -v)')
     return parser
-
-# Create a network connection to TWS/IBG:
-async def safe_connect(host: str, port: int, client_id: int, readonly: bool, account: str) -> IB:
-    ib = IB()
-    try:
-        await ib.connectAsync(host, port, clientId=client_id, readonly=readonly, account=account)
-    except ConnectionRefusedError as e:
-        logger.error('API connection failed: ConnectionRefusedError: '
-                     'Make sure API port on TWS/IBG is open.')
-        #sys.exit(1)
-        raise SystemExit(1) from e
-    except Exception as e:
-        logger.exception('Unexpected error connecting to IB:')
-        #sys.exit(1)
-        raise SystemExit(1) from e
-    return ib
-
-async def myapp(args: Any) -> None:
-    ib = None
-    ib = await safe_connect(args.host, args.port, args.client_id, args.readonly, args.account)
-    #if not ib.isConnected():
-    #    logger.error('Not connected: Need to restart TWS/IBG.')
-    #    #sys.exit(1)
-    #    raise SystemExit(1)
-    #await asyncio.sleep(1)
-    console = Console(highlight=False)
-    ib.reqMarketDataType(MarketDataType)
-    try:
-        await showAccounts(ib, console)
-    finally:
-        if ib is not None:
-            ib.disconnect()
 
 async def main(argv: list[str]) -> None:
     global verbose, DoNotShowCurrentYear, ShowYearWithTwoDigits, cur_year
