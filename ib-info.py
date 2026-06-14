@@ -30,8 +30,15 @@
 # Using subscription data is disabled by default, use param '-m' to enable
 # using market data subscriptions.
 #
+# Use the following possibilities for market data via the param --market-data-type=2
+# (https://interactivebrokers.github.io/tws-api/market_data_type.html):
+# - 1 == live, realtime with subscriptions
+# - 2 == frozen
+# - 3 == delayed
+# - 4 == delayed frozen
+#
 # TODO:
-# - Make this also a web application.
+# - Make this also a web application. (streamlit)
 # - Translate all prices into Euro (base currency) as an option.
 # - Allow translation of output into different languages.
 # - For currency overview futures are not yet included.
@@ -99,6 +106,23 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+# Many subscriptions of market data are only available within the
+# TWS, but not for the (python) API. So by default, we set
+# access to market subscription data to False.
+# Change this with param --use-market-data/-m:
+UseMarketDataSubscription: bool = False
+# https://interactivebrokers.github.io/tws-api/market_data_type.html
+# 1 == live, realtime with subscriptions
+# 2 == frozen
+# 3 == delayed
+# 4 == delayed frozen
+MarketDataType: int = 2
+
+# Show a red margin above this margin level:
+MarginRed: float = 50.0
+# Show a yellow margin above this margin level:
+MarginYellow: float = 30.0
+
 # How verbose should logging be?
 # Check with params --verbose/-v, --debug, --quiet.
 verbose: int = 1
@@ -114,11 +138,6 @@ ShowYearWithTwoDigits: bool = False
 # This is param '--short-expire-format':
 DoNotShowCurrentYear: bool = False
 
-# Show a red margin above this margin level:
-MarginRed: float = 50.0
-# Show a yellow margin above this margin level:
-MarginYellow: float = 30.0
-
 # Futures and Futures-Options that are used for currency hedging
 # and should be displayed within an extra overview page:
 CURRENCY_SYMBOLS: set[str] = {'EUR', 'M6E', '6E'}
@@ -133,18 +152,6 @@ def warn_once(mylogger: logging.Logger, msg: str) -> None:
 # Turn off some of the more annoying logging output from ib_async:
 #logging.getLogger('ib_async.wrapper').setLevel(logging.CRITICAL)
 #logging.getLogger('ib_async.ib').setLevel(logging.ERROR)
-
-# Many subscriptions of market data are only available within the
-# TWS, but not for the (python) API. So by default, we set
-# access to market subscription data to False.
-# Change this with param --use-market-data/-m:
-UseMarketDataSubscription: bool = False
-# https://interactivebrokers.github.io/tws-api/market_data_type.html
-# 1 == live, realtime with subscriptions
-# 2 == frozen
-# 3 == delayed
-# 4 == delayed frozen
-MarketDataType: int = 2
 
 # XXX How to detect base currency?
 #BASE = '€'
@@ -533,7 +540,6 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     #    ticker = tickers[i]
     #    if contract is None or ticker is None:
     #        continue
-    #await asyncio.sleep(2)
     if ShowTime:
         starttime = time.time()
     results = await ib.qualifyContractsAsync(*contracts)
@@ -546,7 +552,6 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     valid: list[Any] = [(c, r) for c, r in zip(contracts, results) if r is not None]
     if not valid:
         return
-    #await asyncio.sleep(2)
     if ShowTime:
         starttime = time.time()
     tickers = await ib.reqTickersAsync(*[r for _, r in valid])
@@ -864,8 +869,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
         accountValues = ib.accountValues()
         printAccountValues(console, accountValues)
 
-    # To refresh use: reqAccountUpdatesAsync()
-    #portfolio = await ib.portfolioAsync() # XXX
+    # XXX To refresh use: reqAccountUpdatesAsync()
     portfolio = ib.portfolio()
     if not portfolio:
         # XXX allow empty portfolio? Check with paper trading...
@@ -1071,57 +1075,57 @@ async def main(argv: list[str]) -> None:
 
     try:
         await showAccounts(ib, console)
-
-    #tasks = []
-    #for symbol in symbols:
-    #    tasks.append(fetch_data(ib, symbol))
-    ##await asyncio.gather(*tasks)
-
-    #ret = await ib.reqContractDetailsAsync(contract)
-    #print(ret)
-
-    #option = Option('EOE', '20171215', 490, 'P', 'FTA', multiplier=100)
-    #calc = ib.calculateImpliedVolatility(option, optionPrice=6.1, underPrice=525)
-    #print(calc)
-    #calc = ib.calculateOptionPrice(option, volatility=0.14, underPrice=525)
-    #print(calc)
-
-    #spx = Index('SPX', 'CBOE')
-    #chains = ib.reqSecDefOptParams(spx.symbol, '', spx.secType, spx.conId)
-    #util.df(chains)
-    #chain = next(c for c in chains if c.tradingClass == 'SPX' and c.exchange == 'SMART')
-    #strikes = [
-    #    strike
-    #    for strike in chain.strikes
-    #    if strike % 5 == 0 and spxValue - 20 < strike < spxValue + 20
-    #]
-    #expirations = sorted(exp for exp in chain.expirations)[:3]
-    #rights = ['P', 'C']
-    #contracts = [
-    #    Option('SPX', expiration, strike, right, 'SMART', tradingClass='SPX')
-    #    for right in rights
-    #    for expiration in expirations
-    #    for strike in strikes
-    #]
-    #tickers = ib.reqTickers(*contracts)
-    #contracts = ib.qualifyContracts(*contracts)
-    #len(contracts)
-
-    #active_tickers = ib.tickers()
-    #if active_tickers:
-    #logger.info(f'Cancel {len(active_tickers)} subscripions:')
-    #for ticker in active_tickers:
-    #    logger.info(f'Cancel subscription for {ticker.contract.symbol}.')
-    #    try:
-    #        ib.cancelMktData(ticker.contract)
-    #    except:
-    #        pass
-
-    # ticker.askGreeks ticker.bidGreeks ticker.lastGreeks ticker.modelGreeks
-
     finally:
         if ib is not None:
             ib.disconnect()
+
+
+#tasks = []
+#for symbol in symbols:
+#    tasks.append(fetch_data(ib, symbol))
+##await asyncio.gather(*tasks)
+
+#ret = await ib.reqContractDetailsAsync(contract)
+#print(ret)
+
+#option = Option('EOE', '20171215', 490, 'P', 'FTA', multiplier=100)
+#calc = ib.calculateImpliedVolatility(option, optionPrice=6.1, underPrice=525)
+#print(calc)
+#calc = ib.calculateOptionPrice(option, volatility=0.14, underPrice=525)
+#print(calc)
+
+#spx = Index('SPX', 'CBOE')
+#chains = ib.reqSecDefOptParams(spx.symbol, '', spx.secType, spx.conId)
+#util.df(chains)
+#chain = next(c for c in chains if c.tradingClass == 'SPX' and c.exchange == 'SMART')
+#strikes = [
+#    strike
+#    for strike in chain.strikes
+#    if strike % 5 == 0 and spxValue - 20 < strike < spxValue + 20
+#]
+#expirations = sorted(exp for exp in chain.expirations)[:3]
+#rights = ['P', 'C']
+#contracts = [
+#    Option('SPX', expiration, strike, right, 'SMART', tradingClass='SPX')
+#    for right in rights
+#    for expiration in expirations
+#    for strike in strikes
+#]
+#tickers = ib.reqTickers(*contracts)
+#contracts = ib.qualifyContracts(*contracts)
+#len(contracts)
+
+#active_tickers = ib.tickers()
+#if active_tickers:
+#logger.info(f'Cancel {len(active_tickers)} subscripions:')
+#for ticker in active_tickers:
+#    logger.info(f'Cancel subscription for {ticker.contract.symbol}.')
+#    try:
+#        ib.cancelMktData(ticker.contract)
+#    except:
+#        pass
+
+# ticker.askGreeks ticker.bidGreeks ticker.lastGreeks ticker.modelGreeks
 
 
 if __name__ == '__main__':
