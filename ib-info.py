@@ -931,8 +931,7 @@ async def safe_connect(host: str, port: int, client_id: int, readonly: bool, acc
         raise SystemExit(1) from e
     return ib
 
-async def myapp(args: Any) -> None:
-    ib = None
+async def myapp(args: argparse.Namespace) -> None:
     ib = await safe_connect(args.host, args.port, args.client_id, args.readonly, args.account)
     #if not ib.isConnected():
     #    logger.error('Not connected: Need to restart TWS/IBG.')
