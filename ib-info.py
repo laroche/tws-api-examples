@@ -88,7 +88,7 @@
 # pylint: disable=W0511,R0912,C0103,C0114,C0115,C0116
 #
 
-#from dataclasses import dataclass
+from dataclasses import dataclass
 from typing import Any
 from functools import lru_cache
 import sys
@@ -106,37 +106,42 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-# Many subscriptions of market data are only available within the
-# TWS, but not for the (python) API. So by default, we set
-# access to market subscription data to False.
-# Change this with param --use-market-data/-m:
-UseMarketDataSubscription: bool = False
-# https://interactivebrokers.github.io/tws-api/market_data_type.html
-# 1 == live, realtime with subscriptions
-# 2 == frozen
-# 3 == delayed
-# 4 == delayed frozen
-MarketDataType: int = 2
+@dataclass
+class Config:
+    # Many subscriptions of market data are only available within the
+    # TWS, but not for the (python) API. So by default, we set
+    # access to market subscription data to False.
+    # Change this with param --use-market-data/-m:
+    use_market_data_subscription: bool = False
 
-# Show a red margin above this margin level:
-MarginRed: float = 50.0
-# Show a yellow margin above this margin level:
-MarginYellow: float = 30.0
+    # https://interactivebrokers.github.io/tws-api/market_data_type.html
+    # 1 == live, realtime with subscriptions
+    # 2 == frozen
+    # 3 == delayed
+    # 4 == delayed frozen
+    market_data_type: int = 2
 
-# How verbose should logging be?
-# Check with params --verbose/-v, --debug, --quiet.
-verbose: int = 1
+    # Output configuration:
+    # Limit year of expiration date to 2 digits only.
+    # This is param '--two-digit-years':
+    show_year_with_two_digits: bool = False
+    # Do not show current year for expiration dates.
+    # This is param '--short-expire-format':
+    do_not_show_current_year: bool = False
 
-# Show runtime information for requests to IBKR:
-ShowTime: bool = False
+    # Show a red margin above this margin level:
+    margin_red: float = 50.0
+    # Show a yellow margin above this margin level:
+    margin_yellow: float = 30.0
 
-# Output configuration:
-# Limit year of expiration date to 2 digits only.
-# This is param '--two-digit-years':
-ShowYearWithTwoDigits: bool = False
-# Do not show current year for expiration dates.
-# This is param '--short-expire-format':
-DoNotShowCurrentYear: bool = False
+    # How verbose should logging be?
+    # Check with params --verbose/-v, --debug, --quiet.
+    verbose: int = 1
+
+    # Show runtime information for requests to IBKR:
+    show_time: bool = False
+
+config = Config()
 
 # Futures and Futures-Options that are used for currency hedging
 # and should be displayed within an extra overview page:
@@ -156,50 +161,6 @@ def warn_once(mylogger: logging.Logger, msg: str) -> None:
 # XXX How to detect base currency?
 #BASE = '€'
 
-#@dataclass
-#class IBConfig: # AppConfig
-#    host: str = '127.0.0.1'
-#    port: int = 7496
-#    client_id: int = 0
-#    account: str = ''
-#    readonly: bool = False
-#    show_year_with_two_digits: bool = False
-#    do_not_show_current_year: bool = False
-#    verbose: int = 1
-#
-#    @classmethod
-#    def from_env(cls) -> 'IBConfig':
-#        """Load configuration from environment variables"""
-#        return cls(
-#            host=os.environ.get('IBKR_HOST', '127.0.0.1'),
-#            port=int(os.environ.get('IBKR_PORT', 7496)),
-#            # ... etc
-#        )
-#
-#    @classmethod
-#    def from_args(cls, args) -> 'AppConfig':
-#        cfg = cls()
-#        cfg.verbose = 3 if args.debug else (0 if args.quiet else args.verbose)
-#        cfg.show_year_with_two_digits = bool(args.two_digit_years)
-#        cfg.do_not_show_current_year = bool(args.short_expire_format)
-#        if cfg.do_not_show_current_year:
-#            cfg.current_year = datetime.date.today().strftime('%Y')
-#        return cfg
-#config = IBConfig()
-
-#def readConfig(file_path):
-#    import configparser
-#    config = configparser.ConfigParser()
-#    config.read(file_path)
-#
-#    ib_host = config.get('ib_connection', 'host')
-#    ib_port = config.getint('ib_connection', 'port')
-#    ib_client_id = config.getint('ib_connection', 'client_id')
-#
-#    log_level = config.get('logging', 'level').upper()
-#    log_filename = config.get('logging', 'filename')
-#    return config
-
 # Convert currency name into short currency symbol:
 currency_conversion: dict[str, str] = {
     'EUR': '€', 'USD': '$', 'GBP': '£', 'JPY': '¥'}
@@ -212,7 +173,7 @@ US_INDEX_OPTIONS: set[str] = {'SPX', 'RUT', 'NDX'}
 EUREX_INDEX_OPTIONS: set[str] = {'DAX', 'V1X'}
 
 def isIndexOption(contract: Contract) -> bool:
-    return (isinstance(contract, Option) and 
+    return (isinstance(contract, Option) and
         (contract.symbol in US_INDEX_OPTIONS or contract.symbol in EUREX_INDEX_OPTIONS))
 
 # Format a float output, smaller numbers get 4 decimals:
@@ -271,7 +232,7 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
 # Display key data from accountSummary:
 def showAccountSummary(console: Console, accounts: list[str],
     accountSummary: list[AccountValue]) -> None:
-    if verbose >= 3:
+    if config.verbose >= 3:
         printAccountSummary(console, accountSummary)
     table = Table(title='Account Summary')
     if len(accounts) > 1:
@@ -289,14 +250,14 @@ def showAccountSummary(console: Console, accounts: list[str],
         # XXX add info on time of last update
         if account == 'All':
             table.add_section()
-        if margin >= MarginRed:
+        if margin >= config.margin_red:
             margin_str = f'[bold red]{margin_str}[/]'
-        elif margin >= MarginYellow:
+        elif margin >= config.margin_yellow:
             margin_str = f'[yellow]{margin_str}[/]'
         table.add_row(f'{account}', f'{nav}', margin_str, f'{cash} ({cash_percent})')
     console.print(Panel(table))
     for (account, nav, margin, margin_str, cash, cash_percent) in accountDetails:
-        if margin >= MarginRed:
+        if margin >= config.margin_red:
             console.print(f'[bold red]Warning: Account {account} uses margin of {margin_str}.[/]')
 
 # Store market price and greeks of instruments into a dictionary:
@@ -342,9 +303,9 @@ def getName(contract: Contract) -> str:
         return contract.localSymbol
     # Options require some more work for an instrument name:
     expiration = contract.lastTradeDateOrContractMonth
-    if ShowYearWithTwoDigits:
+    if config.show_year_with_two_digits:
         expiration = expiration[2:]
-    elif DoNotShowCurrentYear:
+    elif config.do_not_show_current_year:
         if cur_year == expiration[:4]:
             expiration = expiration[4:]
     return f'{contract.symbol} {contract.right}{getStrike(contract)} {expiration}'
@@ -455,7 +416,7 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
     if show_options_details:
         dte = getDTE(None, expiration) if expiration is not None else ''
         row.extend([f'{dte}', f'{sum_theta:.2f} {curr}', underlying_price, ''])
-        if UseMarketDataSubscription:
+        if config.use_market_data_subscription:
             sum_delta_curr_str = ''
             if sum_delta_curr != 0.0:
                 sum_delta_curr_str = f'{sum_delta_curr:.0f} {curr}'
@@ -487,7 +448,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                 # XXX check if different values exist?
                 addMarketPrice(getName(pi.contract), 1, pi.marketPrice)
                 #print('Adding', getName(pi.contract), 'with market price', pi.marketPrice)
-    if not UseMarketDataSubscription:
+    if not config.use_market_data_subscription:
         return
     contracts: list[Contract] = []
     # add all forex pairs:
@@ -539,10 +500,10 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     #    ticker = tickers[i]
     #    if contract is None or ticker is None:
     #        continue
-    if ShowTime:
+    if config.show_time:
         starttime = time.time()
     results = await ib.qualifyContractsAsync(*contracts)
-    if ShowTime:
+    if config.show_time:
         print(
          f'runtime for qualifyContractsAsync({len(contracts)}): {time.time() - starttime:.2f} sec')
     # Filter out None results and track original indices
@@ -551,10 +512,10 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     valid: list[Any] = [(c, r) for c, r in zip(contracts, results) if r is not None]
     if not valid:
         return
-    if ShowTime:
+    if config.show_time:
         starttime = time.time()
     tickers = await ib.reqTickersAsync(*[r for _, r in valid])
-    if ShowTime:
+    if config.show_time:
         print(f'runtime for reqTickersAsync({len(valid)}): {time.time() - starttime:.2f} sec')
     for (_, contract), ticker in zip(valid, tickers):
         name = getName(contract)
@@ -649,13 +610,13 @@ def showPortfolio(console: Console, accounts: list[str],
             table.add_column('average price', justify='right')
         if show_options_details:
             table.add_column('DTE', justify='right')
-            if UseMarketDataSubscription:
+            if config.use_market_data_subscription:
                 table.add_column('daily theta', justify='right')
             else:
                 table.add_column('avg daily theta', justify='right')
             table.add_column('price undly', justify='right')
             table.add_column('ITM', justify='right')
-            if UseMarketDataSubscription:
+            if config.use_market_data_subscription:
                 table.add_column('IV', justify='right')
                 table.add_column('delta', justify='right')
                 table.add_column('delta $', justify='right')
@@ -710,7 +671,7 @@ def showPortfolio(console: Console, accounts: list[str],
                                 vega_str])
                         #, f'{gr.theta:.5f}'])
                         #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
-                elif UseMarketDataSubscription:
+                elif config.use_market_data_subscription:
                     row.extend(['', '', '', '', ''])
                 if ct.symbol not in summe_undl:
                     summe_undl[ct.symbol] = {}
@@ -864,7 +825,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
 
     showAccountSummary(console, accounts, accountSummary)
 
-    if verbose >= 3:
+    if config.verbose >= 3:
         accountValues = ib.accountValues()
         printAccountValues(console, accountValues)
 
@@ -874,7 +835,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
         # XXX allow empty portfolio? Check with paper trading...
         logger.error('Could not read portfolio.')
         return
-    if verbose >= 3:
+    if config.verbose >= 3:
         showPortfolioDebug(console, portfolio)
 
     await getPortfolioData(ib, portfolio)
@@ -889,7 +850,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     showPortfolio(console, accounts, portfolio, currency_options=True)
 
     # Less information compared to showPortfolio():
-    if verbose >= 3:
+    if config.verbose >= 3:
         positions = ib.positions()
         if positions:
             console.print()
@@ -939,7 +900,7 @@ async def myapp(args: argparse.Namespace) -> None:
     #    raise SystemExit(1)
     #await asyncio.sleep(1)
     console = Console(highlight=False)
-    ib.reqMarketDataType(MarketDataType)
+    ib.reqMarketDataType(config.market_data_type)
     try:
         await showAccounts(ib, console)
     finally:
@@ -1011,7 +972,7 @@ Examples:
     # Runtime info:
     parser.add_argument('--runtime-info', '-t',
         action='store_true',
-        dest='ShowTime',
+        dest='show_time',
         help='Output runtime info on calling for IBKR data')
     # Verbosity control
     verbosity_group = parser.add_mutually_exclusive_group()
@@ -1028,8 +989,7 @@ Examples:
     return parser
 
 async def main(argv: list[str]) -> None:
-    global verbose, DoNotShowCurrentYear, ShowYearWithTwoDigits, cur_year
-    global UseMarketDataSubscription, MarketDataType, ShowTime
+    global cur_year
 
     try:
         locale.setlocale(locale.LC_ALL, '')
@@ -1043,33 +1003,33 @@ async def main(argv: list[str]) -> None:
 
     parser = create_parser()
     args = parser.parse_args(argv)
-    ShowYearWithTwoDigits = args.two_digit_years
-    DoNotShowCurrentYear = args.short_expire_format
-    ShowTime = args.ShowTime
-    if DoNotShowCurrentYear:
+    config.show_year_with_two_digits = args.two_digit_years
+    config.do_not_show_current_year = args.short_expire_format
+    config.show_time = args.show_time
+    if config.do_not_show_current_year:
         today = datetime.date.today()
         cur_year = today.strftime('%Y') # today.year
     if args.debug:
-        verbose = 3
+        config.verbose = 3
     elif args.quiet:
-        verbose = 0
+        config.verbose = 0
     else:
-        verbose = args.verbose
+        config.verbose = args.verbose
     if args.use_market_data:
-        UseMarketDataSubscription = True
-    MarketDataType = args.market_data_type
+        config.use_market_data_subscription = True
+    config.market_data_type = args.market_data_type
 
     #config = readConfig('ib-info.ini')
 
     util.allowCtrlC()
 
-    if verbose == 0:
+    if config.verbose == 0:
         util.logToConsole(logging.ERROR)
-    elif verbose == 1:
+    elif config.verbose == 1:
         util.logToConsole(logging.WARNING)
-    elif verbose == 2:
+    elif config.verbose == 2:
         util.logToConsole(logging.INFO)
-    elif verbose >= 3:
+    elif config.verbose >= 3:
         util.logToConsole(logging.DEBUG)
     #util.logToFile('ib.log', logging.WARNING)
 
