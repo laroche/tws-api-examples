@@ -101,6 +101,7 @@ import logging
 import datetime
 import argparse
 import asyncio
+
 from ib_async import (IB, FuturesOption, Option, AccountValue,
     PortfolioItem, Contract, Stock, Index, Future, Forex, OptionComputation, util)
 
@@ -116,6 +117,7 @@ class Config:
     # Change this with param --use-market-data/-m:
     use_market_data_subscription: bool = False
 
+    # Specify the market data type with e.g. --market-data-type 2
     # https://interactivebrokers.github.io/tws-api/market_data_type.html
     # 1 == live, realtime with subscriptions
     # 2 == frozen
@@ -503,8 +505,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         starttime = time.time()
     results = await ib.qualifyContractsAsync(*contracts)
     if config.show_time:
-        print(
-            f'runtime for qualifyContractsAsync({len(contracts)}): {time.time()-starttime:.2f}s')
+        print(f'runtime for qualifyContractsAsync({len(contracts)}): {time.time()-starttime:.2f}s')
     # Filter out None results and track original indices
     for (c, r) in [(c, r) for c, r in zip(contracts, results) if r is None]:
         logger.warning('ib.qualifyContractsAsync() failed for %s', getName(c))
