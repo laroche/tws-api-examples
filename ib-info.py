@@ -37,6 +37,9 @@
 # - 3 == delayed
 # - 4 == delayed frozen
 #
+# pylint: disable=W0511,W0603,R0902,R0912,R0913,C0103,C0114,C0115,C0116,C0302
+# pylint: disable=R0902,R0912,R0913,R0914,R0915,R0917,R1702
+#
 # TODO:
 # - Make this also a web application. (streamlit)
 # - Translate all prices into Euro (base currency) as an option.
@@ -84,8 +87,7 @@
 # - Is a disconnect done properly for all error cases?
 # - add sqlite database for historical data?
 # - pi.marketValue, pi.averageCost, pi.marketPrice, ct.multiplier can be None
-#
-# pylint: disable=W0511,R0912,C0103,C0114,C0115,C0116
+# - Change from isinstance() to contract.secType with STK,IND,OPT,FUT,FOP,CASH
 #
 
 from dataclasses import dataclass
@@ -127,7 +129,7 @@ class Config:
     show_year_with_two_digits: bool = False
     # Do not show current year for expiration dates.
     # This is param '--short-expire-format':
-    do_not_show_current_year: bool = False
+    short_expire_format: bool = False
 
     # Show a red margin above this margin level:
     margin_red: float = 50.0
@@ -305,7 +307,7 @@ def getName(contract: Contract) -> str:
     expiration = contract.lastTradeDateOrContractMonth
     if config.show_year_with_two_digits:
         expiration = expiration[2:]
-    elif config.do_not_show_current_year:
+    elif config.short_expire_format:
         if cur_year == expiration[:4]:
             expiration = expiration[4:]
     return f'{contract.symbol} {contract.right}{getStrike(contract)} {expiration}'
@@ -330,13 +332,13 @@ def getDTE(contract: Contract | None, expiration: str | None = None) -> int:
     if len(expiration) == 8:
         d = datetime.datetime.strptime(expiration, '%Y%m%d')
     elif len(expiration) == 6:
-        logger.warning(f'Monthly expiration date without exact day: {expiration}.')
+        logger.warning('Monthly expiration date without exact day: %s', expiration)
         # XXX Is it correct to look up the third friday of the month?
         # XXX fetch the exact expiration via ib.reqContractDetailsAsync(contract)
         third_friday = get_third_friday(expiration)
         d = datetime.datetime.strptime(expiration + third_friday, '%Y%m%d')
     else:
-        logger.error('Wrong expiration date: %s.', expiration)
+        logger.error('Wrong expiration date: %s', expiration)
         raise ValueError(f'Expiration date ({expiration}) is unknown.')
     dte = d.date() - datetime.date.today()
     return dte.days
@@ -368,7 +370,7 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
         # subtract intrinsic value
         if ct.right == 'P' and underlying_price < ct.strike:
             value -= (ct.strike - underlying_price) * float(ct.multiplier) * pi.position
-        if ct.right == 'C' and underlying_price > ct.strike:
+        elif ct.right == 'C' and underlying_price > ct.strike:
             value -= (underlying_price - ct.strike) * float(ct.multiplier) * pi.position
     avg_daily_theta_decay = (- value) / (dte + 1) if dte >= 0 else 0.0
     #print(pi.position, getName(ct), oldvalue, value, dte, avg_daily_theta_decay)
@@ -424,9 +426,7 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
     table.add_row(*row)
 
 def getDataCacheNum(contract: Contract) -> int:
-    if isinstance(contract, Stock):
-        return 1
-    if isinstance(contract, Index):
+    if isinstance(contract, (Stock, Index)):
         return 1
     if isinstance(contract, Option):
         return 2
@@ -508,7 +508,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
          f'runtime for qualifyContractsAsync({len(contracts)}): {time.time() - starttime:.2f} sec')
     # Filter out None results and track original indices
     for (c, r) in [(c, r) for c, r in zip(contracts, results) if r is None]:
-        logger.warning(f'ib.qualifyContractsAsync() failed for {getName(c)}')
+        logger.warning('ib.qualifyContractsAsync() failed for %s', getName(c))
     valid: list[Any] = [(c, r) for c, r in zip(contracts, results) if r is not None]
     if not valid:
         return
@@ -520,7 +520,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     for (_, contract), ticker in zip(valid, tickers):
         name = getName(contract)
         if ticker is None:
-            logger.warning(f'ib.reqTickersAsync() failed for {name}')
+            logger.warning('ib.reqTickersAsync() failed for %s', name)
             continue
         if isinstance(contract, (Stock, Index, Future, Forex)):
             marketprice = ticker.marketPrice()
@@ -539,7 +539,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                     pair = name + 'USD'
                     #currency_prices[pair] = marketprice
                     s = format_float(marketprice, pair)
-                    logger.warning(f'Adding forex conversion {pair}USD = {s}.')
+                    logger.warning('Adding forex conversion %sUSD = %s', pair, s)
         elif isinstance(contract, (FuturesOption, Option)):
             gr = ticker.modelGreeks
             if gr is None:
@@ -1004,9 +1004,9 @@ async def main(argv: list[str]) -> None:
     parser = create_parser()
     args = parser.parse_args(argv)
     config.show_year_with_two_digits = args.two_digit_years
-    config.do_not_show_current_year = args.short_expire_format
+    config.short_expire_format = args.short_expire_format
     config.show_time = args.show_time
-    if config.do_not_show_current_year:
+    if config.short_expire_format:
         today = datetime.date.today()
         cur_year = today.strftime('%Y') # today.year
     if args.debug:
