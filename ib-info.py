@@ -503,7 +503,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     results = await ib.qualifyContractsAsync(*contracts)
     if config.show_time:
         print(
-         f'runtime for qualifyContractsAsync({len(contracts)}): {time.time() - starttime:.2f} sec')
+            f'runtime for qualifyContractsAsync({len(contracts)}): {time.time()-starttime:.2f}s')
     # Filter out None results and track original indices
     for (c, r) in [(c, r) for c, r in zip(contracts, results) if r is None]:
         logger.warning('ib.qualifyContractsAsync() failed for %s', getName(c))
@@ -514,7 +514,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         starttime = time.time()
     tickers = await ib.reqTickersAsync(*[r for _, r in valid])
     if config.show_time:
-        print(f'runtime for reqTickersAsync({len(valid)}): {time.time() - starttime:.2f} sec')
+        print(f'runtime for reqTickersAsync({len(valid)}): {time.time()-starttime:.2f}s')
     for (_, contract), ticker in zip(valid, tickers):
         name = getName(contract)
         if ticker is None:
