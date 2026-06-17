@@ -956,8 +956,8 @@ Examples:
         action='store_true',
         help='Use market data from IBKR (default: False)')
     parser.add_argument('--market-data-type',
-        type=int, default=2,
-        help='market data type (1=live, 2=delayed)')
+        type=int, choices=[1, 2, 3, 4], default=2,
+        help='market data type (1=live, 2=frozen, 3=delayed, 4=delayed-frozen)')
     # Output formatting
     parser.add_argument('--short-expire-format',
         action='store_true',
