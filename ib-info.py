@@ -37,7 +37,7 @@
 # - 3 == delayed
 # - 4 == delayed frozen
 #
-# pylint: disable=W0511,W0603,R0902,R0912,R0913,C0103,C0114,C0115,C0116,C0302
+# pylint: disable=W0511,W0603,C0103,C0114,C0115,C0116,C0302
 # pylint: disable=R0902,R0912,R0913,R0914,R0915,R0917,R1702
 #
 # TODO:
@@ -463,8 +463,6 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     # add all (future) options to get greeks:
     extra: list[tuple[str, str]] = []
     for pi in portfolio:
-        #if len(contracts) >= 10:
-        #    break
         ct = pi.contract
         if isinstance(ct, (Option, FuturesOption)):
             name = getName(ct)
