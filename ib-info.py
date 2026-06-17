@@ -902,7 +902,7 @@ async def myapp(args: argparse.Namespace) -> None:
     try:
         await showAccounts(ib, console)
     finally:
-        if ib is not None:
+        if ib is not None and ib.isConnected():
             ib.disconnect()
 
 # argument parser:
