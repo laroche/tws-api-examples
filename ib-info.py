@@ -174,7 +174,7 @@ def get_currency_symbol(curr: str) -> str:
 US_INDEX_OPTIONS: set[str] = {'SPX', 'RUT', 'NDX'}
 EUREX_INDEX_OPTIONS: set[str] = {'DAX', 'V1X'}
 
-def isIndexOption(contract: Contract) -> bool:
+def is_index_option(contract: Contract) -> bool:
     return (isinstance(contract, Option) and
         (contract.symbol in US_INDEX_OPTIONS or contract.symbol in EUREX_INDEX_OPTIONS))
 
@@ -351,7 +351,7 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
     if gr is not None and gr.undPrice is not None:
         underlying_price: float | None = gr.undPrice
         # Add price into our cache:
-        if underlying_price is not None:
+        if underlying_price is not None: # XXX this check is only needed for mypy
             num = 1 if isinstance(ct, Option) else 4
             addMarketPrice(ct.symbol, num, underlying_price)
     else:
@@ -436,7 +436,8 @@ def getDataCacheNum(contract: Contract) -> int:
         return 4
     if isinstance(contract, Forex):
         return 5
-    return 0
+    raise ValueError('Unknown contract instance.')
+    #return 0
 
 async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     cache: dict[tuple[int, str], bool] = {}
@@ -568,11 +569,11 @@ def showPortfolio(console: Console, accounts: list[str],
             if non_options and isinstance(ct, (FuturesOption, Option)):
                 continue
             if future_options:
-                if ((not isinstance(ct, FuturesOption) and not isIndexOption(ct)) or
+                if ((not isinstance(ct, FuturesOption) and not is_index_option(ct)) or
                     ct.symbol in CURRENCY_SYMBOLS):
                     continue
             if options:
-                if not isinstance(ct, Option) or isIndexOption(ct):
+                if not isinstance(ct, Option) or is_index_option(ct):
                     continue
             if currency_options and (not isinstance(ct, FuturesOption)
                 or ct.symbol not in CURRENCY_SYMBOLS):
@@ -781,7 +782,7 @@ def showNotionalValue(console: Console, accounts: list[str],
             if pi.account != account:
                 continue
             # Only options, but no future and no index options:
-            if not isinstance(ct, Option) or isIndexOption(ct):
+            if not isinstance(ct, Option) or is_index_option(ct):
                 continue
             if ct.right != 'P' or pi.position >= 0.0: # not short put
                 continue
