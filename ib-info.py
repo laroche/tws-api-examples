@@ -714,7 +714,7 @@ def getUnderlyingPrice(contract: Contract) -> float | None:
     return getMarketPrice(contract.symbol, num)
 
 # Output list of options which expire in less than 'dte' days:
-def ShowLessThanDTE(console: Console, accounts: list[str], portfolio: list[PortfolioItem],
+def showLessThanDTE(console: Console, accounts: list[str], portfolio: list[PortfolioItem],
                     dte: int) -> None:
     for account in accounts:
         pf: list[tuple[PortfolioItem, float | None]] = []
@@ -742,7 +742,7 @@ def ShowLessThanDTE(console: Console, accounts: list[str], portfolio: list[Portf
         console.print(Panel(table))
 
 # Output list of options which are ITM (In The Money):
-def ShowITM(console: Console, accounts: list[str], portfolio: list[PortfolioItem]) -> None:
+def showITM(console: Console, accounts: list[str], portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
         pf: list[tuple[PortfolioItem, float | None]] = []
         for pi in portfolio:
@@ -770,7 +770,7 @@ def ShowITM(console: Console, accounts: list[str], portfolio: list[PortfolioItem
 # to pay all these assignments?
 # XXX Maybe list all individual short puts with their needed cash sum:
 # XXX List notional value of all currency future options and futures.
-def ShowNotionalValue(console: Console, accounts: list[str],
+def showNotionalValue(console: Console, accounts: list[str],
                       portfolio: list[PortfolioItem]) -> None:
     # Output a first blank line and a last blank line:
     first_output = False
@@ -841,10 +841,10 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     showPortfolio(console, accounts, portfolio, non_options=True)
     showPortfolio(console, accounts, portfolio, future_options=True)
     showPortfolio(console, accounts, portfolio, options=True)
-    ShowLessThanDTE(console, accounts, portfolio, 21)
-    ShowLessThanDTE(console, accounts, portfolio, 6)
-    ShowITM(console, accounts, portfolio)
-    ShowNotionalValue(console, accounts, portfolio)
+    showLessThanDTE(console, accounts, portfolio, 21)
+    showLessThanDTE(console, accounts, portfolio, 6)
+    showITM(console, accounts, portfolio)
+    showNotionalValue(console, accounts, portfolio)
     showPortfolio(console, accounts, portfolio, currency_options=True)
 
     # Less information compared to showPortfolio():
