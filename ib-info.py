@@ -297,7 +297,7 @@ def getStrike(contract: Contract) -> str:
     return strip_decimal_zero(f'{contract.strike}')
 
 # Current year:
-cur_year: str | None = None
+current_year: str | None = None
 
 # Return instrument name as string:
 def getName(contract: Contract) -> str:
@@ -308,7 +308,7 @@ def getName(contract: Contract) -> str:
     if config.show_year_with_two_digits:
         expiration = expiration[2:]
     elif config.short_expire_format:
-        if cur_year == expiration[:4]:
+        if current_year == expiration[:4]:
             expiration = expiration[4:]
     return f'{contract.symbol} {contract.right}{getStrike(contract)} {expiration}'
 
@@ -989,7 +989,7 @@ Examples:
     return parser
 
 async def main(argv: list[str]) -> None:
-    global cur_year
+    global current_year
 
     try:
         locale.setlocale(locale.LC_ALL, '')
@@ -1008,7 +1008,7 @@ async def main(argv: list[str]) -> None:
     config.show_time = args.show_time
     if config.short_expire_format:
         today = datetime.date.today()
-        cur_year = today.strftime('%Y') # today.year
+        current_year = today.strftime('%Y') # today.year
     if args.debug:
         config.verbose = 3
     elif args.quiet:
