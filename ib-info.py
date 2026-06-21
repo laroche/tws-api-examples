@@ -55,6 +55,7 @@
 # - Add to options output:
 #   - delta, gamma, theta, vega values
 #     - percent distance from current underlying
+#     - Why are vega/theta values of -2.0 maybe not valid?
 #   - list notional value of all stock option short puts if assigned
 #     Show also needed cash as percentage of all available cash.
 #     Also account for spreads instead of naked puts.
@@ -365,8 +366,10 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
         return (0.0, dte, underlying_price)
     # Prefer IB's model theta:
     if gr is not None and gr.theta is not None:
-        daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
-        return (daily_theta_decay, dte, underlying_price)
+        if gr.theta != -2.0: # XXX -1.0 <= gr.theta <= 1.0:
+            daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
+            return (daily_theta_decay, dte, underlying_price)
+        logger.warning('Not using theta value (%f) from IB for %s', gr.theta, getName(ct))
     # Compute (average/dumb) theta decay ourselves:
     #oldvalue = value
     if underlying_price is not None:
@@ -502,6 +505,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     #    ticker = tickers[i]
     #    if contract is None or ticker is None:
     #        continue
+    #ensure_event_loop()
     if config.show_time:
         starttime = time.time()
     results = await ib.qualifyContractsAsync(*contracts)
@@ -667,8 +671,15 @@ def showPortfolio(console: Console, accounts: list[str],
                             delta_curr_str = f'{delta_curr:.0f} {curr}'
                         values[3] = delta_curr # XXX ugly
                     gamma_str = f'{gr.gamma:.5f}' if gr.gamma is not None else ''
-                    vega_str = f'{gr.vega:.4f}' if gr.vega is not None else ''
-                    row.extend([iv_str, f'{delta:.1f}', delta_curr_str, gamma_str,
+                    vega_str = ''
+                    if gr.vega is not None:
+                        if gr.vega != -2.0: # XXX -1.0 <= gr.vega <= 1.0:
+                            vega_str = f'{gr.vega:.4f}'
+                        else:
+                            logger.warning('Not using vega value (%f) from IB for %s.',
+                                           gr.vega, getName(ct))
+                    delta_s = f'{delta:.1f}' if delta_curr_str else ''
+                    row.extend([iv_str, delta_s, delta_curr_str, gamma_str,
                                 vega_str])
                         #, f'{gr.theta:.5f}'])
                         #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
@@ -877,8 +888,19 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     #for trade in orders:
     #    console.print(f'{trade.contract.symbol}: {trade.order.action} {trade.order.totalQuantity}')
 
+def ensure_event_loop() -> None:
+    try:
+        loop = asyncio.get_event_loop()
+        if not loop.is_running():
+            pass
+    except RuntimeError:
+        logger.warning('Creating new event loop for thread')
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
 # Create a network connection to TWS/IBG:
 async def safe_connect(host: str, port: int, client_id: int, readonly: bool, account: str) -> IB:
+    #ensure_event_loop()
     ib = IB()
     try:
         await ib.connectAsync(host, port, clientId=client_id, readonly=readonly, account=account)
