@@ -46,7 +46,6 @@
 # - Allow translation of output into different languages.
 # - For currency overview futures are not yet included.
 # - Allow for nice/modern config file.
-# - How to switch between delayed and realtime market data automatically?
 # - Add a 'C' to closing prices on the output.
 # - Why is fetching data taking so long?
 # - We use local timzone. For DTE calculations we should use exchange timezone?
@@ -54,8 +53,10 @@
 # - Check if print() -> console.print() is complete.
 # - Add to options output:
 #   - delta, gamma, theta, vega values
-#     - percent distance from current underlying
+#     - add percent distance from current underlying
 #     - Why are vega/theta values of -2.0 maybe not valid?
+#       I assume this is TWS having wrong data on weekends, switching tabs
+#       in TWS seems to clear this.
 #   - list notional value of all stock option short puts if assigned
 #     Show also needed cash as percentage of all available cash.
 #     Also account for spreads instead of naked puts.
@@ -366,10 +367,12 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
         return (0.0, dte, underlying_price)
     # Prefer IB's model theta:
     if gr is not None and gr.theta is not None:
-        if gr.theta != -2.0: # XXX -1.0 <= gr.theta <= 1.0:
-            daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
-            return (daily_theta_decay, dte, underlying_price)
-        logger.warning('Not using theta value (%f) from IB for %s', gr.theta, getName(ct))
+        daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
+        return (daily_theta_decay, dte, underlying_price)
+        #if gr.theta != -2.0: # XXX -1.0 <= gr.theta <= 1.0:
+        #    daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
+        #    return (daily_theta_decay, dte, underlying_price)
+        #logger.warning('Not using theta value (%f) from IB for %s', gr.theta, getName(ct))
     # Compute (average/dumb) theta decay ourselves:
     #oldvalue = value
     if underlying_price is not None:
@@ -671,13 +674,14 @@ def showPortfolio(console: Console, accounts: list[str],
                             delta_curr_str = f'{delta_curr:.0f} {curr}'
                         values[3] = delta_curr # XXX ugly
                     gamma_str = f'{gr.gamma:.5f}' if gr.gamma is not None else ''
-                    vega_str = ''
-                    if gr.vega is not None:
-                        if gr.vega != -2.0: # XXX -1.0 <= gr.vega <= 1.0:
-                            vega_str = f'{gr.vega:.4f}'
-                        else:
-                            logger.warning('Not using vega value (%f) from IB for %s.',
-                                           gr.vega, getName(ct))
+                    #vega_str = ''
+                    #if gr.vega is not None:
+                    #    if gr.vega != -2.0: # XXX -1.0 <= gr.vega <= 1.0:
+                    #        vega_str = f'{gr.vega:.4f}'
+                    #    else:
+                    #        logger.warning('Not using vega value (%f) from IB for %s.',
+                    #                       gr.vega, getName(ct))
+                    vega_str = f'{gr.vega:.4f}' if gr.vega is not None else ''
                     delta_s = f'{delta:.1f}' if delta_curr_str else ''
                     row.extend([iv_str, delta_s, delta_curr_str, gamma_str,
                                 vega_str])
