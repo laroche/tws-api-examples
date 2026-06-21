@@ -96,6 +96,7 @@ from functools import lru_cache
 import sys
 import os
 import time
+import zoneinfo
 import locale
 import logging
 import datetime
@@ -892,6 +893,20 @@ async def safe_connect(host: str, port: int, client_id: int, readonly: bool, acc
         raise SystemExit(1) from e
     return ib
 
+def is_market_hours() -> bool:
+    #import pytz
+    #eastern = pytz.timezone('US/Eastern')
+    #import dateutil
+    #eastern = dateutil.tz.gettz('US/Eastern')
+    eastern = zoneinfo.ZoneInfo('US/Eastern')
+    now = datetime.datetime.now(eastern)
+    if now.weekday() >= 5:  # 5 is Saturday, 6 is Sunday
+        return False
+    # 9:30 AM to 4:00 PM ET are regular trading hours
+    if datetime.time(9, 30) <= now.time() < datetime.time(16, 0):
+        return True
+    return False
+
 async def myapp(args: argparse.Namespace) -> None:
     ib = await safe_connect(args.host, args.port, args.client_id, args.readonly, args.account)
     #if not ib.isConnected():
@@ -958,7 +973,7 @@ Examples:
         action='store_true',
         help='Use market data from IBKR (default: False)')
     parser.add_argument('--market-data-type',
-        type=int, choices=[1, 2, 3, 4], default=2,
+        type=int, choices=[1, 2, 3, 4], default=config.market_data_type,
         help='market data type (1=live, 2=frozen, 3=delayed, 4=delayed-frozen)')
     # Output formatting
     parser.add_argument('--short-expire-format',
@@ -1000,6 +1015,8 @@ async def main(argv: list[str]) -> None:
     #print(locale.getlocale())
     #for key, value in locale.localeconv().items():
     #    print('%s: %s' % (key, value))
+
+    config.market_data_type = 1 if is_market_hours() else 2
 
     parser = create_parser()
     args = parser.parse_args(argv)
