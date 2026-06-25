@@ -565,6 +565,58 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                 num = getDataCacheNum(contract)
                 greeks_cache[(num, name)] = gr
 
+def getStockShares(symbol: str, account: str, portfolio: list[PortfolioItem]) -> int | None:
+    for pi in portfolio:
+        if pi.account != account:
+            continue
+        if not isinstance(pi.contract, Stock) or pi.contract.symbol != symbol:
+            continue
+        return round(pi.position)
+    return None
+
+def showOptionstratURLs(console: Console, accounts: list[str],
+                        portfolio: list[PortfolioItem]) -> None:
+    for account in accounts:
+        # Collect the list of underlyings for optionstrat:
+        underlyings = {}
+        for pi in portfolio:
+            # XXX add FuturesOption
+            if pi.account != account or not isinstance(pi.contract, Option):
+                continue
+            underlyings[pi.contract.symbol] = True
+        if not underlyings:
+            continue
+        console.print()
+        console.print(f'Optionstrat URLs for {account}:')
+        # Output URL for each underlying:
+        for symbol in underlyings:
+            url = f'https://optionstrat.com/build/custom/{symbol}/'
+            # Maybe add stock position to optionstrat:
+            n = getStockShares(symbol, account, portfolio)
+            if n is not None:
+                url += f'{symbol}x{n}'
+            # Add all option positions to optionstrat:
+            for pi in portfolio:
+                ct = pi.contract
+                # XXX add FuturesOption
+                if pi.account != account or not isinstance(ct, Option):
+                    continue
+                if symbol != ct.symbol:
+                    continue
+                if url[-1] != '/':
+                    url += ','
+                expiration = ct.lastTradeDateOrContractMonth[2:]
+                n = round(pi.position)
+                name = f'.{symbol}{expiration}{ct.right}{getStrike(ct)}'
+                if n == -1:
+                    url += f'-{name}'
+                elif n == 1:
+                    url += name
+                else:
+                    url += f'{name}x{n}'
+            console.print(url)
+        console.print()
+
 # Output different portfolio views:
 def showPortfolio(console: Console, accounts: list[str],
     portfolio: list[PortfolioItem], non_options: bool = False, future_options: bool = False,
@@ -864,6 +916,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     showITM(console, accounts, portfolio)
     showNotionalValue(console, accounts, portfolio)
     showPortfolio(console, accounts, portfolio, currency_options=True)
+    showOptionstratURLs(console, accounts, portfolio)
 
     # Less information compared to showPortfolio():
     if config.verbose >= 3:
