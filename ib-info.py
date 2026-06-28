@@ -623,23 +623,21 @@ def getOptionstratURL(symbol: str, stockposition: int | None, options: list[Port
 
 # Create list of all underlyings and output an optionstrat URL
 # for each underlying with all its option positions.
-def showOptionstratURLs(console: Console, accounts: list[str],
-                        portfolio: list[PortfolioItem]) -> None:
-    for account in accounts:
-        accountportfolio = getAccountPortfolio(account, portfolio)
-        # Collect the list of underlyings for optionstrat:
-        underlyings = getOptionsUnderlying(accountportfolio)
-        if not underlyings:
-            continue
-        console.print()
-        console.print(f'Optionstrat URLs for {account}:')
-        # Output URL for each underlying:
-        for symbol in underlyings:
-            stockposition = getStockPosition(symbol, accountportfolio)
-            options = getOptionsForUnderlying(symbol, accountportfolio)
-            url = getOptionstratURL(symbol, stockposition, options)
-            console.print(url)
-        console.print()
+def showOptionstratURLs(console: Console, account: str,
+                        accountportfolio: list[PortfolioItem]) -> None:
+    # Collect the list of underlyings for optionstrat:
+    underlyings = getOptionsUnderlying(accountportfolio)
+    if not underlyings:
+        return
+    console.print()
+    console.print(f'Optionstrat URLs for {account}:')
+    # Output URL for each underlying:
+    for symbol in underlyings:
+        stockposition = getStockPosition(symbol, accountportfolio)
+        options = getOptionsForUnderlying(symbol, accountportfolio)
+        url = getOptionstratURL(symbol, stockposition, options)
+        console.print(url)
+    console.print()
 
 # Output different portfolio views:
 def showPortfolio(console: Console, accounts: list[str],
@@ -808,94 +806,89 @@ def getUnderlyingPrice(contract: Contract) -> float | None:
     return getMarketPrice(contract.symbol, num)
 
 # Output list of options which expire in less than 'dte' days:
-def showLessThanDTE(console: Console, accounts: list[str], portfolio: list[PortfolioItem],
+def showLessThanDTE(console: Console, account: str, accountportfolio: list[PortfolioItem],
                     dte: int) -> None:
-    for account in accounts:
-        pf: list[tuple[PortfolioItem, float | None]] = []
-        for pi in portfolio:
-            if pi.account != account or not isinstance(pi.contract, (Option, FuturesOption)):
-                continue
-            # This might also show already expired options.
-            #if getDTE(pi.contract) <= dte:
-            if 0 <= getDTE(pi.contract) <= dte:
-                underlying_price = getUnderlyingPrice(pi.contract)
-                pf.append((pi, underlying_price))
-        if not pf:
+    pf: list[tuple[PortfolioItem, float | None]] = []
+    for pi in accountportfolio:
+        if not isinstance(pi.contract, (Option, FuturesOption)):
             continue
-        table = Table(
-            title=f'List all options that expire in {dte} DTE or less for account {account}')
-        table.add_column('pos.', justify='right')
-        table.add_column('instrument')
-        table.add_column('DTE', justify='right')
-        table.add_column('undl. price', justify='right')
-        for (p, undl_price) in pf:
-            curr = get_currency_symbol(p.contract.currency)
-            s = format_float(undl_price, curr)
-            table.add_row(f'{getPosition(p)}', f'{getName(p.contract)}', f'{getDTE(p.contract)}',
-                          f'{s}')
-        console.print(Panel(table))
+        # This might also show already expired options.
+        #if getDTE(pi.contract) <= dte:
+        if 0 <= getDTE(pi.contract) <= dte:
+            underlying_price = getUnderlyingPrice(pi.contract)
+            pf.append((pi, underlying_price))
+    if not pf:
+        return
+    table = Table(
+        title=f'List all options that expire in {dte} DTE or less for account {account}')
+    table.add_column('pos.', justify='right')
+    table.add_column('instrument')
+    table.add_column('DTE', justify='right')
+    table.add_column('undl. price', justify='right')
+    for (p, undl_price) in pf:
+        curr = get_currency_symbol(p.contract.currency)
+        s = format_float(undl_price, curr)
+        table.add_row(f'{getPosition(p)}', f'{getName(p.contract)}', f'{getDTE(p.contract)}',
+                      f'{s}')
+    console.print(Panel(table))
 
 # Output list of options which are ITM (In The Money):
-def showITM(console: Console, accounts: list[str], portfolio: list[PortfolioItem]) -> None:
-    for account in accounts:
-        pf: list[tuple[PortfolioItem, float | None]] = []
-        for pi in portfolio:
-            ct = pi.contract
-            if pi.account != account or not isinstance(ct, (Option, FuturesOption)):
-                continue
-            underlying_price = getUnderlyingPrice(ct)
-            if isITM(ct, underlying_price):
-                pf.append((pi, underlying_price))
-        if not pf:
+def showITM(console: Console, account: str, accountportfolio: list[PortfolioItem]) -> None:
+    pf: list[tuple[PortfolioItem, float | None]] = []
+    for pi in accountportfolio:
+        ct = pi.contract
+        if not isinstance(ct, (Option, FuturesOption)):
             continue
-        table = Table(title=f'List all In The Money (ITM) options for account {account}')
-        table.add_column('pos.', justify='right')
-        table.add_column('instrument')
-        table.add_column('DTE', justify='right')
-        table.add_column('undl. price', justify='right')
-        for (p, undl_price) in pf:
-            curr = get_currency_symbol(p.contract.currency)
-            s = format_float(undl_price, curr)
-            table.add_row(f'{getPosition(p)}', f'{getName(p.contract)}', f'{getDTE(p.contract)}',
-                          f'{s}')
-        console.print(Panel(table))
+        underlying_price = getUnderlyingPrice(ct)
+        if isITM(ct, underlying_price):
+            pf.append((pi, underlying_price))
+    if not pf:
+        return
+    table = Table(title=f'List all In The Money (ITM) options for account {account}')
+    table.add_column('pos.', justify='right')
+    table.add_column('instrument')
+    table.add_column('DTE', justify='right')
+    table.add_column('undl. price', justify='right')
+    for (p, undl_price) in pf:
+        curr = get_currency_symbol(p.contract.currency)
+        s = format_float(undl_price, curr)
+        table.add_row(f'{getPosition(p)}', f'{getName(p.contract)}', f'{getDTE(p.contract)}',
+                      f'{s}')
+    console.print(Panel(table))
 
 # If all short puts get assigned, what amount of cash (notional value) would be needed
 # to pay all these assignments?
 # XXX Maybe list all individual short puts with their needed cash sum:
 # XXX List notional value of all currency future options and futures.
-def showNotionalValue(console: Console, accounts: list[str],
-                      portfolio: list[PortfolioItem]) -> None:
+def showNotionalValue(console: Console, account: str,
+                      accountportfolio: list[PortfolioItem]) -> None:
     # Output a first blank line and a last blank line:
     first_output = False
-    for account in accounts:
-        sum_sp: dict[str, list[float]] = {} # sum of all short puts if assigned
-        for pi in portfolio:
-            ct = pi.contract
-            if pi.account != account:
-                continue
-            # Only options, but no future and no index options:
-            if not isinstance(ct, Option) or is_index_option(ct):
-                continue
-            if ct.right != 'P' or pi.position >= 0.0: # not short put
-                continue
-            curr = get_currency_symbol(ct.currency)
-            accumulate_values(sum_sp, (ct.strike * pi.position * float(ct.multiplier),), curr)
-        # XXX Also add open trades into notional value calculation.
-        if not sum_sp:
+    sum_sp: dict[str, list[float]] = {} # sum of all short puts if assigned
+    for pi in accountportfolio:
+        ct = pi.contract
+        # Only options, but no future and no index options:
+        if not isinstance(ct, Option) or is_index_option(ct):
             continue
-        for (curr, summe) in sum_sp.items():
-            if summe[0] == 0.0:
-                continue
-            # XXX Show also needed cash as percentage of all available cash:
-            #cash_percent = f'{-summe[0] * 100.0 / all_cash:.0f}%' if all_cash > 0.0 else ''
-            # Output first blank line if no output has been done until now:
-            if not first_output:
-                first_output = True
-                console.print()
-            summe_str = format_float(-summe[0], curr)
-            console.print(
-                f'Cash needed if all short puts get assigned for account {account}: {summe_str}')
+        if ct.right != 'P' or pi.position >= 0.0: # not short put
+            continue
+        curr = get_currency_symbol(ct.currency)
+        accumulate_values(sum_sp, (ct.strike * pi.position * float(ct.multiplier),), curr)
+    # XXX Also add open trades into notional value calculation.
+    if not sum_sp:
+        return
+    for (curr, summe) in sum_sp.items():
+        if summe[0] == 0.0:
+            continue
+        # XXX Show also needed cash as percentage of all available cash:
+        #cash_percent = f'{-summe[0] * 100.0 / all_cash:.0f}%' if all_cash > 0.0 else ''
+        # Output first blank line if no output has been done until now:
+        if not first_output:
+            first_output = True
+            console.print()
+        summe_str = format_float(-summe[0], curr)
+        console.print(
+            f'Cash needed if all short puts get assigned for account {account}: {summe_str}')
     # Output one last blank line if any output has been done:
     if first_output:
         console.print()
@@ -931,16 +924,27 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
         showPortfolioDebug(console, portfolio)
 
     await getPortfolioData(ib, portfolio)
+
     showPortfolio(console, accounts, portfolio)
     showPortfolio(console, accounts, portfolio, non_options=True)
     showPortfolio(console, accounts, portfolio, future_options=True)
     showPortfolio(console, accounts, portfolio, options=True)
-    showLessThanDTE(console, accounts, portfolio, 21)
-    showLessThanDTE(console, accounts, portfolio, 6)
-    showITM(console, accounts, portfolio)
-    showNotionalValue(console, accounts, portfolio)
+    for account in accounts:
+        accountportfolio = getAccountPortfolio(account, portfolio)
+        showLessThanDTE(console, account, accountportfolio, 21)
+    for account in accounts:
+        accountportfolio = getAccountPortfolio(account, portfolio)
+        showLessThanDTE(console, account, accountportfolio, 6)
+    for account in accounts:
+        accountportfolio = getAccountPortfolio(account, portfolio)
+        showITM(console, account, portfolio)
+    for account in accounts:
+        accountportfolio = getAccountPortfolio(account, portfolio)
+        showNotionalValue(console, account, accountportfolio)
     showPortfolio(console, accounts, portfolio, currency_options=True)
-    showOptionstratURLs(console, accounts, portfolio)
+    for account in accounts:
+        accountportfolio = getAccountPortfolio(account, portfolio)
+        showOptionstratURLs(console, account,  accountportfolio)
 
     # Less information compared to showPortfolio():
     if config.verbose >= 3:
