@@ -568,11 +568,11 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
 def getAccountPortfolio(account: str, portfolio: list[PortfolioItem]) -> list[PortfolioItem]:
     return [pi for pi in portfolio if pi.account == account]
 
-def getStockPosition(symbol: str, accountportfolio: list[PortfolioItem]) -> int | None:
+def getStockPosition(symbol: str, accountportfolio: list[PortfolioItem]) -> float | None:
     for pi in accountportfolio:
         if not isinstance(pi.contract, Stock) or pi.contract.symbol != symbol:
             continue
-        return round(pi.position)
+        return pi.position
     return None
 
 def getOptionsUnderlying(accountportfolio: list[PortfolioItem]) -> dict[str, bool]:
@@ -592,11 +592,12 @@ def getOptionsForUnderlying(symbol: str,
 
 # Create URL for one optionstrat view for one symbol with one possible stock position
 # and a list of option positions.
-def getOptionstratURL(symbol: str, stockposition: int | None, options: list[PortfolioItem]) -> str:
+def getOptionstratURL(symbol: str, stockposition: float | None,
+                      options: list[PortfolioItem]) -> str:
     url = f'https://optionstrat.com/build/custom/{symbol}/'
     # Add possible stock position:
     if stockposition is not None:
-        url += f'{symbol}x{stockposition}'
+        url += f'{symbol}x{round(stockposition)}'
     # Add option positions into URL:
     for pi in options:
         ct = pi.contract
