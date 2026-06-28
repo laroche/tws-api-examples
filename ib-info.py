@@ -38,7 +38,7 @@
 # - 4 == delayed frozen
 #
 # pylint: disable=W0511,W0603,C0103,C0114,C0115,C0116,C0302
-# pylint: disable=R0902,R0912,R0913,R0914,R0915,R0917,R1702
+# pylint: disable=R0902,R0912,R0913,R0914,R0915,R0917
 #
 # TODO:
 # - Make this also a web application. (streamlit)
