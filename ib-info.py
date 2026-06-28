@@ -565,7 +565,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                 num = getDataCacheNum(contract)
                 greeks_cache[(num, name)] = gr
 
-def getStockShares(symbol: str, account: str, portfolio: list[PortfolioItem]) -> int | None:
+def getStockPosition(symbol: str, account: str, portfolio: list[PortfolioItem]) -> int | None:
     for pi in portfolio:
         if pi.account != account:
             continue
@@ -574,46 +574,66 @@ def getStockShares(symbol: str, account: str, portfolio: list[PortfolioItem]) ->
         return round(pi.position)
     return None
 
+def getOptionsUnderlying(account: str, portfolio: list[PortfolioItem]) -> dict[str, bool]:
+    underlyings = {}
+    for pi in portfolio:
+        # XXX add FuturesOption
+        if pi.account != account or not isinstance(pi.contract, Option):
+            continue
+        underlyings[pi.contract.symbol] = True
+    return underlyings
+
+def getOptionsForUnderlying(symbol: str, account: str,
+                            portfolio: list[PortfolioItem]) -> list[PortfolioItem]:
+    ret = []
+    for pi in portfolio:
+        # XXX add FuturesOption
+        if pi.account != account or not isinstance(pi.contract, Option):
+            continue
+        if symbol != pi.contract.symbol:
+            continue
+        ret.append(pi)
+    return ret
+
+# Create URL for one optionstrat view for one symbol with one possible stock position
+# and a list of option positions.
+def getOptionstratURL(symbol: str, stockposition: int | None, options: list[PortfolioItem]) -> str:
+    url = f'https://optionstrat.com/build/custom/{symbol}/'
+    # Add possible stock position:
+    if stockposition is not None:
+        url += f'{symbol}x{stockposition}'
+    # Add option positions into URL:
+    for pi in options:
+        ct = pi.contract
+        if url[-1] != '/':
+            url += ','
+        expiration = ct.lastTradeDateOrContractMonth[2:]
+        n = round(pi.position)
+        name = f'.{symbol}{expiration}{ct.right}{getStrike(ct)}'
+        if n == -1:
+            url += f'-{name}'
+        elif n == 1:
+            url += name
+        else:
+            url += f'{name}x{n}'
+    return url
+
+# Create list of all underlyings and output an optionstrat URL
+# for each underlying with all its option positions.
 def showOptionstratURLs(console: Console, accounts: list[str],
                         portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
         # Collect the list of underlyings for optionstrat:
-        underlyings = {}
-        for pi in portfolio:
-            # XXX add FuturesOption
-            if pi.account != account or not isinstance(pi.contract, Option):
-                continue
-            underlyings[pi.contract.symbol] = True
+        underlyings = getOptionsUnderlying(account, portfolio)
         if not underlyings:
             continue
         console.print()
         console.print(f'Optionstrat URLs for {account}:')
         # Output URL for each underlying:
         for symbol in underlyings:
-            url = f'https://optionstrat.com/build/custom/{symbol}/'
-            # Maybe add stock position to optionstrat:
-            n = getStockShares(symbol, account, portfolio)
-            if n is not None:
-                url += f'{symbol}x{n}'
-            # Add all option positions to optionstrat:
-            for pi in portfolio:
-                ct = pi.contract
-                # XXX add FuturesOption
-                if pi.account != account or not isinstance(ct, Option):
-                    continue
-                if symbol != ct.symbol:
-                    continue
-                if url[-1] != '/':
-                    url += ','
-                expiration = ct.lastTradeDateOrContractMonth[2:]
-                n = round(pi.position)
-                name = f'.{symbol}{expiration}{ct.right}{getStrike(ct)}'
-                if n == -1:
-                    url += f'-{name}'
-                elif n == 1:
-                    url += name
-                else:
-                    url += f'{name}x{n}'
+            n = getStockPosition(symbol, account, portfolio)
+            options = getOptionsForUnderlying(symbol, account, portfolio)
+            url = getOptionstratURL(symbol, n, options)
             console.print(url)
         console.print()
 
