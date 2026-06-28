@@ -568,6 +568,9 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
 def getAccountPortfolio(account: str, portfolio: list[PortfolioItem]) -> list[PortfolioItem]:
     return [pi for pi in portfolio if pi.account == account]
 
+def getOptionPortfolio(accountportfolio: list[PortfolioItem]) -> list[PortfolioItem]:
+    return [pi for pi in accountportfolio if isinstance(pi.contract, (Option, FuturesOption))]
+
 def getStockPosition(symbol: str, accountportfolio: list[PortfolioItem]) -> float | None:
     for pi in accountportfolio:
         if not isinstance(pi.contract, Stock) or pi.contract.symbol != symbol:
@@ -796,12 +799,10 @@ def getUnderlyingPrice(contract: Contract) -> float | None:
     return getMarketPrice(contract.symbol, num)
 
 # Output list of options which expire in less than 'dte' days:
-def showLessThanDTE(console: Console, account: str, accountportfolio: list[PortfolioItem],
+def showLessThanDTE(console: Console, account: str, optionportfolio: list[PortfolioItem],
                     dte: int) -> None:
     pf: list[tuple[PortfolioItem, float | None]] = []
-    for pi in accountportfolio:
-        if not isinstance(pi.contract, (Option, FuturesOption)):
-            continue
+    for pi in optionportfolio:
         # This might also show already expired options.
         #if getDTE(pi.contract) <= dte:
         if 0 <= getDTE(pi.contract) <= dte:
@@ -823,14 +824,11 @@ def showLessThanDTE(console: Console, account: str, accountportfolio: list[Portf
     console.print(Panel(table))
 
 # Output list of options which are ITM (In The Money):
-def showITM(console: Console, account: str, accountportfolio: list[PortfolioItem]) -> None:
+def showITM(console: Console, account: str, optionportfolio: list[PortfolioItem]) -> None:
     pf: list[tuple[PortfolioItem, float | None]] = []
-    for pi in accountportfolio:
-        ct = pi.contract
-        if not isinstance(ct, (Option, FuturesOption)):
-            continue
-        underlying_price = getUnderlyingPrice(ct)
-        if isITM(ct, underlying_price):
+    for pi in optionportfolio:
+        underlying_price = getUnderlyingPrice(pi.contract)
+        if isITM(pi.contract, underlying_price):
             pf.append((pi, underlying_price))
     if not pf:
         return
@@ -851,11 +849,11 @@ def showITM(console: Console, account: str, accountportfolio: list[PortfolioItem
 # XXX Maybe list all individual short puts with their needed cash sum:
 # XXX List notional value of all currency future options and futures.
 def showNotionalValue(console: Console, account: str,
-                      accountportfolio: list[PortfolioItem]) -> None:
+                      optionportfolio: list[PortfolioItem]) -> None:
     # Output a first blank line and a last blank line:
     first_output = False
     sum_sp: dict[str, list[float]] = {} # sum of all short puts if assigned
-    for pi in accountportfolio:
+    for pi in optionportfolio:
         ct = pi.contract
         # Only options, but no future and no index options:
         if not isinstance(ct, Option) or is_index_option(ct):
@@ -917,15 +915,16 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
 
     for account in accounts:
         accountportfolio = getAccountPortfolio(account, portfolio)
+        optionportfolio = getOptionPortfolio(accountportfolio)
 
         showPortfolio(console, account, accountportfolio)
         showPortfolio(console, account, accountportfolio, non_options=True)
         showPortfolio(console, account, accountportfolio, future_options=True)
         showPortfolio(console, account, accountportfolio, options=True)
-        showLessThanDTE(console, account, accountportfolio, 21)
-        showLessThanDTE(console, account, accountportfolio, 6)
-        showITM(console, account, accountportfolio)
-        showNotionalValue(console, account, accountportfolio)
+        showLessThanDTE(console, account, optionportfolio, 21)
+        showLessThanDTE(console, account, optionportfolio, 6)
+        showITM(console, account, optionportfolio)
+        showNotionalValue(console, account, optionportfolio)
         showPortfolio(console, account, accountportfolio, currency_options=True)
         showOptionstratURLs(console, account, accountportfolio)
 
