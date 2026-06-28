@@ -148,7 +148,7 @@ class Config:
     # Show runtime information for requests to IBKR:
     show_time: bool = False
 
-config = Config()
+config: Config = Config()
 
 # Futures and Futures-Options that are used for currency hedging
 # and should be displayed within an extra overview page:
@@ -210,7 +210,7 @@ def printAccountSummary(console: Console, accountSummary: list[AccountValue]) ->
 # Extract key data from accountSummary:
 def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -> list[tuple[str,
                       str, float, str, str, str]]:
-    ret = []
+    ret: list[tuple[str, str, float, str, str, str]] = []
     for account in accounts:
         (nav, nav_str, cash, cash_str, margin, margin_str) = (0.0, '0', 0.0, '0', 0.0, '0')
         for p in accountSummary:
@@ -420,7 +420,7 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
     (sum_costbasis, sum_marketValue, sum_theta, sum_delta_curr) = values
     pnl = sum_marketValue - sum_costbasis
     pnl_percent = (pnl / abs(sum_costbasis)) * 100.0 if sum_costbasis != 0.0 else 0.0
-    row = ['', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.1f}%',
+    row: list[str] = ['', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.1f}%',
            f'{sum_marketValue:.0f} {curr}', f'{sum_costbasis:.0f} {curr}']
     if show_prices:
         row.extend(['', ''])
@@ -517,7 +517,8 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     # Filter out None results and track original indices
     for (c, r) in [(c, r) for c, r in zip(contracts, results) if r is None]:
         logger.warning('ib.qualifyContractsAsync() failed for %s', getName(c))
-    valid: list[Any] = [(c, r) for c, r in zip(contracts, results) if r is not None]
+    valid: list[tuple[Contract, Any]] = \
+        [(c, r) for c, r in zip(contracts, results) if r is not None]
     if not valid:
         return
     if config.show_time:
@@ -579,7 +580,7 @@ def getStockPosition(symbol: str, accountportfolio: list[PortfolioItem]) -> floa
     return None
 
 def getOptionsUnderlying(accountportfolio: list[PortfolioItem]) -> dict[str, bool]:
-    underlyings = {}
+    underlyings: dict[str, bool] = {}
     for pi in accountportfolio:
         # XXX add FuturesOption
         if not isinstance(pi.contract, Option):
@@ -715,12 +716,12 @@ def showPortfolio(console: Console, account: str,
             costbasis = mv - pnl
         pnl_percent = (pnl / abs(costbasis) * 100.0) if costbasis != 0.0 else 0.0
         name = getName(pi.contract)
-        row = [f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.0f}%',
+        row: list[str] = [f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.0f}%',
                f'{pi.marketValue:.0f} {curr}', f'{costbasis:.0f} {curr}']
         if show_prices:
             row.extend([f'{pi.marketPrice:.2f} {curr}', f'{pi.averageCost:.2f} {curr}'])
         theta = 0.0
-        values = [costbasis, pi.marketValue, theta, 0.0]
+        values: list[float] = [costbasis, pi.marketValue, theta, 0.0]
         gr: OptionComputation | None = None
         if show_options_details:
             ct = pi.contract
