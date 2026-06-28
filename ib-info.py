@@ -565,32 +565,35 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                 num = getDataCacheNum(contract)
                 greeks_cache[(num, name)] = gr
 
-def getStockPosition(symbol: str, account: str, portfolio: list[PortfolioItem]) -> int | None:
+def getAccountPortfolio(account: str, portfolio: list[PortfolioItem]) -> list[PortfolioItem]:
+    ret = []
     for pi in portfolio:
-        if pi.account != account:
-            continue
+        if pi.account == account:
+            ret.append(pi)
+    return ret
+
+def getStockPosition(symbol: str, accountportfolio: list[PortfolioItem]) -> int | None:
+    for pi in accountportfolio:
         if not isinstance(pi.contract, Stock) or pi.contract.symbol != symbol:
             continue
         return round(pi.position)
     return None
 
-def getOptionsUnderlying(account: str, portfolio: list[PortfolioItem]) -> dict[str, bool]:
+def getOptionsUnderlying(accountportfolio: list[PortfolioItem]) -> dict[str, bool]:
     underlyings = {}
-    for pi in portfolio:
+    for pi in accountportfolio:
         # XXX add FuturesOption
-        if pi.account != account or not isinstance(pi.contract, Option):
+        if not isinstance(pi.contract, Option):
             continue
         underlyings[pi.contract.symbol] = True
     return underlyings
 
-def getOptionsForUnderlying(symbol: str, account: str,
-                            portfolio: list[PortfolioItem]) -> list[PortfolioItem]:
+def getOptionsForUnderlying(symbol: str,
+                            accountportfolio: list[PortfolioItem]) -> list[PortfolioItem]:
     ret = []
-    for pi in portfolio:
+    for pi in accountportfolio:
         # XXX add FuturesOption
-        if pi.account != account or not isinstance(pi.contract, Option):
-            continue
-        if symbol != pi.contract.symbol:
+        if not isinstance(pi.contract, Option) or symbol != pi.contract.symbol:
             continue
         ret.append(pi)
     return ret
@@ -623,17 +626,18 @@ def getOptionstratURL(symbol: str, stockposition: int | None, options: list[Port
 def showOptionstratURLs(console: Console, accounts: list[str],
                         portfolio: list[PortfolioItem]) -> None:
     for account in accounts:
+        accountportfolio = getAccountPortfolio(account, portfolio)
         # Collect the list of underlyings for optionstrat:
-        underlyings = getOptionsUnderlying(account, portfolio)
+        underlyings = getOptionsUnderlying(accountportfolio)
         if not underlyings:
             continue
         console.print()
         console.print(f'Optionstrat URLs for {account}:')
         # Output URL for each underlying:
         for symbol in underlyings:
-            n = getStockPosition(symbol, account, portfolio)
-            options = getOptionsForUnderlying(symbol, account, portfolio)
-            url = getOptionstratURL(symbol, n, options)
+            stockposition = getStockPosition(symbol, accountportfolio)
+            options = getOptionsForUnderlying(symbol, accountportfolio)
+            url = getOptionstratURL(symbol, stockposition, options)
             console.print(url)
         console.print()
 
