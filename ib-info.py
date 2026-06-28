@@ -640,160 +640,157 @@ def showOptionstratURLs(console: Console, account: str,
     console.print()
 
 # Output different portfolio views:
-def showPortfolio(console: Console, accounts: list[str],
-    portfolio: list[PortfolioItem], non_options: bool = False, future_options: bool = False,
+def showPortfolio(console: Console, account: str,
+    accountportfolio: list[PortfolioItem], non_options: bool = False, future_options: bool = False,
     options: bool = False, currency_options: bool = False) -> None:
-    for account in accounts:
-        pf: list[PortfolioItem] = []
-        for pi in portfolio:
-            if pi.account != account:
-                continue
-            ct = pi.contract
-            if non_options and isinstance(ct, (FuturesOption, Option)):
-                continue
-            if future_options:
-                if ((not isinstance(ct, FuturesOption) and not is_index_option(ct)) or
-                    ct.symbol in CURRENCY_SYMBOLS):
-                    continue
-            if options:
-                if not isinstance(ct, Option) or is_index_option(ct):
-                    continue
-            if currency_options and (not isinstance(ct, FuturesOption)
-                or ct.symbol not in CURRENCY_SYMBOLS):
-                continue
-            pf.append(pi)
-        if not pf:
+    pf: list[PortfolioItem] = []
+    for pi in accountportfolio:
+        ct = pi.contract
+        if non_options and isinstance(ct, (FuturesOption, Option)):
             continue
-        # XXX sort pf
-        show_options_details = False
-        show_prices = False
-        if non_options:
-            table = Table(title=f'portfolio (without options) {account}')
-            show_prices = True
-        elif future_options:
-            table = Table(title=f'future/index options portfolio {account}')
-            show_options_details = True
-        elif options:
-            table = Table(title=f'options portfolio {account}')
-            show_options_details = True
-        elif currency_options:
-            table = Table(title=f'currency hedging portfolio {account}')
-            show_options_details = True
+        if future_options:
+            if ((not isinstance(ct, FuturesOption) and not is_index_option(ct)) or
+                ct.symbol in CURRENCY_SYMBOLS):
+                continue
+        if options:
+            if not isinstance(ct, Option) or is_index_option(ct):
+                continue
+        if currency_options and (not isinstance(ct, FuturesOption)
+            or ct.symbol not in CURRENCY_SYMBOLS):
+            continue
+        pf.append(pi)
+    if not pf:
+        return
+    # XXX sort pf
+    show_options_details = False
+    show_prices = False
+    if non_options:
+        table = Table(title=f'portfolio (without options) {account}')
+        show_prices = True
+    elif future_options:
+        table = Table(title=f'future/index options portfolio {account}')
+        show_options_details = True
+    elif options:
+        table = Table(title=f'options portfolio {account}')
+        show_options_details = True
+    elif currency_options:
+        table = Table(title=f'currency hedging portfolio {account}')
+        show_options_details = True
+    else:
+        table = Table(title=f'complete portfolio {account}')
+    table.add_column('pos.', justify='right')
+    table.add_column('instrument')
+    table.add_column('PnL', justify='right')
+    table.add_column('PnL %', justify='right')
+    table.add_column('market value', justify='right')
+    table.add_column('cost basis', justify='right')
+    if show_prices:
+        table.add_column('current price', justify='right')
+        table.add_column('average price', justify='right')
+    if show_options_details:
+        table.add_column('DTE', justify='right')
+        if config.use_market_data_subscription:
+            table.add_column('daily theta', justify='right')
         else:
-            table = Table(title=f'complete portfolio {account}')
-        table.add_column('pos.', justify='right')
-        table.add_column('instrument')
-        table.add_column('PnL', justify='right')
-        table.add_column('PnL %', justify='right')
-        table.add_column('market value', justify='right')
-        table.add_column('cost basis', justify='right')
+            table.add_column('avg daily theta', justify='right')
+        table.add_column('price undly', justify='right')
+        table.add_column('ITM', justify='right')
+        if config.use_market_data_subscription:
+            table.add_column('IV', justify='right')
+            table.add_column('delta', justify='right')
+            table.add_column('delta $', justify='right')
+            table.add_column('gamma', justify='right')
+            table.add_column('vega', justify='right')
+            #table.add_column('theta', justify='right')
+            #table.add_column('optPrice', justify='right')
+            #table.add_column('undPrice', justify='right')
+            #table.add_column('pvDividend', justify='right')
+    summe: dict[str, list[float]] = {}
+    if show_options_details:
+        summe_undl: dict[str, dict[str, list[float]]] = {}
+        summe_exp: dict[str, dict[str, list[float]]] = {}
+    for pi in pf:
+        pnl = pi.unrealizedPNL if pi.unrealizedPNL is not None else 0.0
+        curr = get_currency_symbol(pi.contract.currency)
+        if pi.averageCost is not None:
+            costbasis = pi.position * pi.averageCost
+        else:
+            mv = pi.marketValue if pi.marketValue is not None else 0.0
+            costbasis = mv - pnl
+        pnl_percent = (pnl / abs(costbasis) * 100.0) if costbasis != 0.0 else 0.0
+        name = getName(pi.contract)
+        row = [f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.0f}%',
+               f'{pi.marketValue:.0f} {curr}', f'{costbasis:.0f} {curr}']
         if show_prices:
-            table.add_column('current price', justify='right')
-            table.add_column('average price', justify='right')
+            row.extend([f'{pi.marketPrice:.2f} {curr}', f'{pi.averageCost:.2f} {curr}'])
+        theta = 0.0
+        values = [costbasis, pi.marketValue, theta, 0.0]
+        gr: OptionComputation | None = None
         if show_options_details:
-            table.add_column('DTE', justify='right')
-            if config.use_market_data_subscription:
-                table.add_column('daily theta', justify='right')
-            else:
-                table.add_column('avg daily theta', justify='right')
-            table.add_column('price undly', justify='right')
-            table.add_column('ITM', justify='right')
-            if config.use_market_data_subscription:
-                table.add_column('IV', justify='right')
-                table.add_column('delta', justify='right')
-                table.add_column('delta $', justify='right')
-                table.add_column('gamma', justify='right')
-                table.add_column('vega', justify='right')
-                #table.add_column('theta', justify='right')
-                #table.add_column('optPrice', justify='right')
-                #table.add_column('undPrice', justify='right')
-                #table.add_column('pvDividend', justify='right')
-        summe: dict[str, list[float]] = {}
-        if show_options_details:
-            summe_undl: dict[str, dict[str, list[float]]] = {}
-            summe_exp: dict[str, dict[str, list[float]]] = {}
-        for pi in pf:
-            pnl = pi.unrealizedPNL if pi.unrealizedPNL is not None else 0.0
-            curr = get_currency_symbol(pi.contract.currency)
-            if pi.averageCost is not None:
-                costbasis = pi.position * pi.averageCost
-            else:
-                mv = pi.marketValue if pi.marketValue is not None else 0.0
-                costbasis = mv - pnl
-            pnl_percent = (pnl / abs(costbasis) * 100.0) if costbasis != 0.0 else 0.0
-            name = getName(pi.contract)
-            row = [f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.0f}%',
-                   f'{pi.marketValue:.0f} {curr}', f'{costbasis:.0f} {curr}']
-            if show_prices:
-                row.extend([f'{pi.marketPrice:.2f} {curr}', f'{pi.averageCost:.2f} {curr}'])
-            theta = 0.0
-            values = [costbasis, pi.marketValue, theta, 0.0]
-            gr: OptionComputation | None = None
-            if show_options_details:
-                ct = pi.contract
-                num = getDataCacheNum(ct)
-                gr = getGreeksCache(name, num)
-                (theta, dte, undl_price) = getThetaDTE(pi, gr)
-                values[2] = theta # XXX ugly
-                ITM = 'Yes' if isITM(ct, undl_price) else ''
-                undl_price_str = format_float(undl_price, curr)
-                row.extend([f'{dte}', f'{theta:.2f} {curr}', undl_price_str, ITM])
-                if gr is not None:
-                    iv_str = f'{gr.impliedVol * 100.0:.1f} %' if gr.impliedVol is not None else ''
-                    (delta, delta_curr, delta_curr_str) = (0.0, 0.0, '')
-                    if gr.delta is not None:
-                        delta = gr.delta * 100.0
-                        if undl_price is not None:
-                            delta_curr = gr.delta * undl_price * float(ct.multiplier) * pi.position
-                            delta_curr_str = f'{delta_curr:.0f} {curr}'
-                        values[3] = delta_curr # XXX ugly
-                    gamma_str = f'{gr.gamma:.5f}' if gr.gamma is not None else ''
-                    #vega_str = ''
-                    #if gr.vega is not None:
-                    #    if gr.vega != -2.0: # XXX -1.0 <= gr.vega <= 1.0:
-                    #        vega_str = f'{gr.vega:.4f}'
-                    #    else:
-                    #        logger.warning('Not using vega value (%f) from IB for %s.',
-                    #                       gr.vega, getName(ct))
-                    vega_str = f'{gr.vega:.4f}' if gr.vega is not None else ''
-                    delta_s = f'{delta:.1f}' if delta_curr_str else ''
-                    row.extend([iv_str, delta_s, delta_curr_str, gamma_str,
-                                vega_str])
-                        #, f'{gr.theta:.5f}'])
-                        #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
-                elif config.use_market_data_subscription:
-                    row.extend(['', '', '', '', ''])
-                if ct.symbol not in summe_undl:
-                    summe_undl[ct.symbol] = {}
-                accumulate_values(summe_undl[ct.symbol], values, curr)
-                exp = ct.lastTradeDateOrContractMonth
-                if exp not in summe_exp:
-                    summe_exp[exp] = {}
-                accumulate_values(summe_exp[exp], values, curr)
-            accumulate_values(summe, values, curr)
-            table.add_row(*row)
-        if show_options_details:
-            # add summary lines by expiration date
-            table.add_section()
-            for exp in sorted(summe_exp.keys()):
-                for (curr, values) in summe_exp[exp].items():
-                    # XXX should the expiration output be shortened?
-                    add_summary(f'total {exp}', values, curr, show_options_details,
-                        show_prices, table, '', exp)
-            # add summary lines per underlying
-            table.add_section()
-            for undl in sorted(summe_undl.keys()):
-                for (curr, values) in summe_undl[undl].items():
-                    undl_price_ = getMarketPrice(undl, 1) # XXX might not be stock
-                    undl_price_str = format_float(undl_price_, curr)
-                    add_summary(f'total {undl}', values, curr, show_options_details,
-                        show_prices, table, undl_price_str, None)
-        # summary per invested currency
+            ct = pi.contract
+            num = getDataCacheNum(ct)
+            gr = getGreeksCache(name, num)
+            (theta, dte, undl_price) = getThetaDTE(pi, gr)
+            values[2] = theta # XXX ugly
+            ITM = 'Yes' if isITM(ct, undl_price) else ''
+            undl_price_str = format_float(undl_price, curr)
+            row.extend([f'{dte}', f'{theta:.2f} {curr}', undl_price_str, ITM])
+            if gr is not None:
+                iv_str = f'{gr.impliedVol * 100.0:.1f} %' if gr.impliedVol is not None else ''
+                (delta, delta_curr, delta_curr_str) = (0.0, 0.0, '')
+                if gr.delta is not None:
+                    delta = gr.delta * 100.0
+                    if undl_price is not None:
+                        delta_curr = gr.delta * undl_price * float(ct.multiplier) * pi.position
+                        delta_curr_str = f'{delta_curr:.0f} {curr}'
+                    values[3] = delta_curr # XXX ugly
+                gamma_str = f'{gr.gamma:.5f}' if gr.gamma is not None else ''
+                #vega_str = ''
+                #if gr.vega is not None:
+                #    if gr.vega != -2.0: # XXX -1.0 <= gr.vega <= 1.0:
+                #        vega_str = f'{gr.vega:.4f}'
+                #    else:
+                #        logger.warning('Not using vega value (%f) from IB for %s.',
+                #                       gr.vega, getName(ct))
+                vega_str = f'{gr.vega:.4f}' if gr.vega is not None else ''
+                delta_s = f'{delta:.1f}' if delta_curr_str else ''
+                row.extend([iv_str, delta_s, delta_curr_str, gamma_str,
+                            vega_str])
+                    #, f'{gr.theta:.5f}'])
+                    #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
+            elif config.use_market_data_subscription:
+                row.extend(['', '', '', '', ''])
+            if ct.symbol not in summe_undl:
+                summe_undl[ct.symbol] = {}
+            accumulate_values(summe_undl[ct.symbol], values, curr)
+            exp = ct.lastTradeDateOrContractMonth
+            if exp not in summe_exp:
+                summe_exp[exp] = {}
+            accumulate_values(summe_exp[exp], values, curr)
+        accumulate_values(summe, values, curr)
+        table.add_row(*row)
+    if show_options_details:
+        # add summary lines by expiration date
         table.add_section()
-        for (curr, values) in summe.items():
-            add_summary(f'total {curr}', values, curr,
-                show_options_details, show_prices, table, '', None)
-        console.print(Panel(table))
+        for exp in sorted(summe_exp.keys()):
+            for (curr, values) in summe_exp[exp].items():
+                # XXX should the expiration output be shortened?
+                add_summary(f'total {exp}', values, curr, show_options_details,
+                    show_prices, table, '', exp)
+        # add summary lines per underlying
+        table.add_section()
+        for undl in sorted(summe_undl.keys()):
+            for (curr, values) in summe_undl[undl].items():
+                undl_price_ = getMarketPrice(undl, 1) # XXX might not be stock
+                undl_price_str = format_float(undl_price_, curr)
+                add_summary(f'total {undl}', values, curr, show_options_details,
+                    show_prices, table, undl_price_str, None)
+    # summary per invested currency
+    table.add_section()
+    for (curr, values) in summe.items():
+        add_summary(f'total {curr}', values, curr,
+            show_options_details, show_prices, table, '', None)
+    console.print(Panel(table))
 
 def getUnderlyingPrice(contract: Contract) -> float | None:
     name = getName(contract)
@@ -925,26 +922,18 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
 
     await getPortfolioData(ib, portfolio)
 
-    showPortfolio(console, accounts, portfolio)
-    showPortfolio(console, accounts, portfolio, non_options=True)
-    showPortfolio(console, accounts, portfolio, future_options=True)
-    showPortfolio(console, accounts, portfolio, options=True)
     for account in accounts:
         accountportfolio = getAccountPortfolio(account, portfolio)
+        showPortfolio(console, account, accountportfolio)
+        showPortfolio(console, account, accountportfolio, non_options=True)
+        showPortfolio(console, account, accountportfolio, future_options=True)
+        showPortfolio(console, account, accountportfolio, options=True)
         showLessThanDTE(console, account, accountportfolio, 21)
-    for account in accounts:
-        accountportfolio = getAccountPortfolio(account, portfolio)
         showLessThanDTE(console, account, accountportfolio, 6)
-    for account in accounts:
-        accountportfolio = getAccountPortfolio(account, portfolio)
-        showITM(console, account, portfolio)
-    for account in accounts:
-        accountportfolio = getAccountPortfolio(account, portfolio)
+        showITM(console, account, accountportfolio)
         showNotionalValue(console, account, accountportfolio)
-    showPortfolio(console, accounts, portfolio, currency_options=True)
-    for account in accounts:
-        accountportfolio = getAccountPortfolio(account, portfolio)
-        showOptionstratURLs(console, account,  accountportfolio)
+        showPortfolio(console, account, accountportfolio, currency_options=True)
+        showOptionstratURLs(console, account, accountportfolio)
 
     # Less information compared to showPortfolio():
     if config.verbose >= 3:
