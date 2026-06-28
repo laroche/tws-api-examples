@@ -209,7 +209,7 @@ def printAccountSummary(console: Console, accountSummary: list[AccountValue]) ->
 
 # Extract key data from accountSummary:
 def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -> list[tuple[str,
-    str, float, str, str, str]]:
+                      str, float, str, str, str]]:
     ret = []
     for account in accounts:
         (nav, nav_str, cash, cash_str, margin, margin_str) = (0.0, '0', 0.0, '0', 0.0, '0')
@@ -238,7 +238,7 @@ def getAccountDetails(accounts: list[str], accountSummary: list[AccountValue]) -
 
 # Display key data from accountSummary:
 def showAccountSummary(console: Console, accounts: list[str],
-    accountSummary: list[AccountValue]) -> None:
+                       accountSummary: list[AccountValue]) -> None:
     if config.verbose >= 3:
         printAccountSummary(console, accountSummary)
     table = Table(title='Account Summary')
@@ -566,11 +566,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                 greeks_cache[(num, name)] = gr
 
 def getAccountPortfolio(account: str, portfolio: list[PortfolioItem]) -> list[PortfolioItem]:
-    ret = []
-    for pi in portfolio:
-        if pi.account == account:
-            ret.append(pi)
-    return ret
+    return [pi for pi in portfolio if pi.account == account]
 
 def getStockPosition(symbol: str, accountportfolio: list[PortfolioItem]) -> int | None:
     for pi in accountportfolio:
@@ -590,13 +586,9 @@ def getOptionsUnderlying(accountportfolio: list[PortfolioItem]) -> dict[str, boo
 
 def getOptionsForUnderlying(symbol: str,
                             accountportfolio: list[PortfolioItem]) -> list[PortfolioItem]:
-    ret = []
-    for pi in accountportfolio:
-        # XXX add FuturesOption
-        if not isinstance(pi.contract, Option) or symbol != pi.contract.symbol:
-            continue
-        ret.append(pi)
-    return ret
+    # XXX add FuturesOption
+    return [pi for pi in accountportfolio if isinstance(pi.contract, Option)
+            and symbol == pi.contract.symbol]
 
 # Create URL for one optionstrat view for one symbol with one possible stock position
 # and a list of option positions.
@@ -924,6 +916,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
 
     for account in accounts:
         accountportfolio = getAccountPortfolio(account, portfolio)
+
         showPortfolio(console, account, accountportfolio)
         showPortfolio(console, account, accountportfolio, non_options=True)
         showPortfolio(console, account, accountportfolio, future_options=True)
