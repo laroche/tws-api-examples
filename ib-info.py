@@ -369,10 +369,6 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
     if gr is not None and gr.theta is not None:
         daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
         return (daily_theta_decay, dte, underlying_price)
-        #if gr.theta != -2.0: # XXX -1.0 <= gr.theta <= 1.0:
-        #    daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
-        #    return (daily_theta_decay, dte, underlying_price)
-        #logger.warning('Not using theta value (%f) from IB for %s', gr.theta, getName(ct))
     # Compute (average/dumb) theta decay ourselves:
     #oldvalue = value
     if underlying_price is not None:
@@ -406,9 +402,9 @@ def accumulate_values(d: dict[str, list[float]], values: list[float] | tuple[flo
 def isITM(contract: Contract, underlying_price: float | None) -> bool:
     if underlying_price is None:
         return False
-    if contract.right == 'P' and underlying_price <= contract.strike:
+    if contract.right == 'P' and underlying_price < contract.strike:
         return True
-    if contract.right == 'C' and underlying_price >= contract.strike:
+    if contract.right == 'C' and underlying_price > contract.strike:
         return True
     return False
 
@@ -548,7 +544,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                     pair = name + 'USD'
                     #currency_prices[pair] = marketprice
                     s = format_float(marketprice, pair)
-                    logger.warning('Adding forex conversion %sUSD = %s', pair, s)
+                    logger.warning('Adding forex conversion %s = %s', pair, s)
         elif isinstance(contract, (FuturesOption, Option)):
             gr = ticker.modelGreeks
             if gr is None:
@@ -562,7 +558,6 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                 #if gr is None:
                 #    warn_once(logger, f'Still not getting greeks for {name}.')
             else:
-                #print(name, 'has delta of', gr.delta)
                 num = getDataCacheNum(contract)
                 greeks_cache[(num, name)] = gr
 
@@ -734,23 +729,14 @@ def showPortfolio(console: Console, account: str,
             row.extend([f'{dte}', f'{theta:.2f} {curr}', undl_price_str, ITM])
             if gr is not None:
                 iv_str = f'{gr.impliedVol * 100.0:.1f} %' if gr.impliedVol is not None else ''
-                (delta, delta_curr, delta_curr_str) = (0.0, 0.0, '')
-                if gr.delta is not None:
-                    delta = gr.delta * 100.0
-                    if undl_price is not None:
-                        delta_curr = gr.delta * undl_price * float(ct.multiplier) * pi.position
-                        delta_curr_str = f'{delta_curr:.0f} {curr}'
+                delta_curr_str = ''
+                if gr.delta is not None and undl_price is not None:
+                    delta_curr = gr.delta * undl_price * float(ct.multiplier) * pi.position
+                    delta_curr_str = f'{delta_curr:.0f} {curr}'
                     values[3] = delta_curr # XXX ugly
                 gamma_str = f'{gr.gamma:.5f}' if gr.gamma is not None else ''
-                #vega_str = ''
-                #if gr.vega is not None:
-                #    if gr.vega != -2.0: # XXX -1.0 <= gr.vega <= 1.0:
-                #        vega_str = f'{gr.vega:.4f}'
-                #    else:
-                #        logger.warning('Not using vega value (%f) from IB for %s.',
-                #                       gr.vega, getName(ct))
                 vega_str = f'{gr.vega:.4f}' if gr.vega is not None else ''
-                delta_s = f'{delta:.1f}' if delta_curr_str else ''
+                delta_s = f'{gr.delta * 100.0:.1f}' if gr.delta is not None else ''
                 row.extend([iv_str, delta_s, delta_curr_str, gamma_str,
                             vega_str])
                     #, f'{gr.theta:.5f}'])
@@ -956,15 +942,15 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
     #for trade in orders:
     #    console.print(f'{trade.contract.symbol}: {trade.order.action} {trade.order.totalQuantity}')
 
-def ensure_event_loop() -> None:
-    try:
-        loop = asyncio.get_event_loop()
-        if not loop.is_running():
-            pass
-    except RuntimeError:
-        logger.warning('Creating new event loop for thread')
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+#def ensure_event_loop() -> None:
+#    try:
+#        loop = asyncio.get_event_loop()
+#        if not loop.is_running():
+#            pass
+#    except RuntimeError:
+#        logger.warning('Creating new event loop for thread')
+#        loop = asyncio.new_event_loop()
+#        asyncio.set_event_loop(loop)
 
 # Create a network connection to TWS/IBG:
 async def safe_connect(host: str, port: int, client_id: int, readonly: bool, account: str) -> IB:
@@ -984,15 +970,12 @@ async def safe_connect(host: str, port: int, client_id: int, readonly: bool, acc
     return ib
 
 def is_market_hours() -> bool:
-    #import pytz
-    #eastern = pytz.timezone('US/Eastern')
-    #import dateutil
-    #eastern = dateutil.tz.gettz('US/Eastern')
     eastern = zoneinfo.ZoneInfo('US/Eastern')
     now = datetime.datetime.now(eastern)
-    if now.weekday() >= 5:  # 5 is Saturday, 6 is Sunday
+    # No trading on saturday (5) and sunday (6):
+    if now.weekday() >= 5:
         return False
-    # 9:30 AM to 4:00 PM ET are regular trading hours
+    # 9:30 AM to 4:00 PM ET are regular trading hours:
     if datetime.time(9, 30) <= now.time() < datetime.time(16, 0):
         return True
     return False
