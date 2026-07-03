@@ -50,6 +50,7 @@
 # - Why is fetching data taking so long?
 # - We use local timzone. For DTE calculations we should use exchange timezone?
 #   Also check ib_async.util.time_to_tws().
+# - Check server time info against local time and warn on mismatch.
 # - Check if print() -> console.print() is complete.
 # - Add to options output:
 #   - delta, gamma, theta, vega values
