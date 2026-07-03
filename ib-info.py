@@ -492,7 +492,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     # get data from IB:
     if not contracts:
         return
-    # XXX Is the limit of 50 messages/second requiring batching into smaller chunks?
+    # XXX Is the API limit of 50 messages/second requiring batching into smaller chunks?
     #logger.warning(f'{len(contracts)} contracts requested.')
     #if len(contracts) >= 50:
     #    logger.warning(
@@ -832,7 +832,7 @@ def showITM(console: Console, account: str, optionportfolio: list[PortfolioItem]
     console.print(Panel(table))
 
 # If all short puts get assigned, what amount of cash (notional value) would be needed
-# to pay all these assignments?
+# to pay all these assignments? Also calculate the delta-adjusted notional value.
 # XXX Maybe list all individual short puts with their needed cash sum:
 # XXX List notional value of all currency future options and futures.
 def showNotionalValue(console: Console, account: str,
@@ -848,7 +848,13 @@ def showNotionalValue(console: Console, account: str,
         if ct.right != 'P' or pi.position >= 0.0: # not short put
             continue
         curr = get_currency_symbol(ct.currency)
-        accumulate_values(sum_sp, (ct.strike * pi.position * float(ct.multiplier),), curr)
+        nv = ct.strike * pi.position * float(ct.multiplier)
+        da_nv = 0.0 # delta-adjusted notional value
+        if config.use_market_data_subscription:
+            gr = getGreeksCache(getName(ct), getDataCacheNum(ct))
+            if gr is not None and gr.delta is not None:
+                da_nv = nv * (- gr.delta)
+        accumulate_values(sum_sp, (nv, da_nv), curr)
     # XXX Also add open trades into notional value calculation.
     if not sum_sp:
         return
@@ -862,8 +868,13 @@ def showNotionalValue(console: Console, account: str,
             first_output = True
             console.print()
         summe_str = format_float(-summe[0], curr)
-        console.print(
-            f'Cash needed if all short puts get assigned for account {account}: {summe_str}')
+        console.print(f'Cash needed if all short puts get assigned (notional value for all short '
+                      f'puts) for account {account}: {summe_str}')
+        if summe[1] == 0.0:
+            continue
+        da_summe_str = format_float(-summe[1], curr)
+        console.print(f'Delta-adjusted notional value for all short puts for account {account}: '
+                      f'{da_summe_str}')
     # Output one last blank line if any output has been done:
     if first_output:
         console.print()
