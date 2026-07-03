@@ -734,11 +734,10 @@ def showPortfolio(console: Console, account: str,
                     delta_curr = gr.delta * undl_price * float(ct.multiplier) * pi.position
                     delta_curr_str = f'{delta_curr:.0f} {curr}'
                     values[3] = delta_curr # XXX ugly
-                gamma_str = f'{gr.gamma:.5f}' if gr.gamma is not None else ''
-                vega_str = f'{gr.vega:.4f}' if gr.vega is not None else ''
-                delta_s = f'{gr.delta * 100.0:.1f}' if gr.delta is not None else ''
-                row.extend([iv_str, delta_s, delta_curr_str, gamma_str,
-                            vega_str])
+                gamma = f'{gr.gamma:.5f}' if gr.gamma is not None else ''
+                vega = f'{gr.vega:.4f}' if gr.vega is not None else ''
+                delta = f'{gr.delta * 100.0:.1f}' if gr.delta is not None else ''
+                row.extend([iv_str, delta, delta_curr_str, gamma, vega])
                     #, f'{gr.theta:.5f}'])
                     #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
             elif config.use_market_data_subscription:
