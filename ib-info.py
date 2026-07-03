@@ -859,7 +859,7 @@ def showNotionalValue(console: Console, account: str,
                 if not first_output:
                     first_output = True
                     console.print()
-                console.print(f'No delta value for {pi.position} {name}')
+                console.print(f'No delta value for {getPosition(pi)} {name}')
         accumulate_values(sum_sp, (nv, da_nv), curr)
     # XXX Also add open trades into notional value calculation.
     if not sum_sp:
