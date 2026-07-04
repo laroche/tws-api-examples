@@ -351,7 +351,7 @@ def getDTE(contract: Contract | None, expiration: str | None = None) -> int:
 
 # Return average daily theta decay, DTE and underlying_price:
 def getThetaDTE(pi: PortfolioItem,
-                gr: OptionComputation | None) -> tuple[float, float, int, float | None]:
+                gr: OptionComputation | None) -> tuple[float, float, float, int, float | None]:
     ct = pi.contract
     dte = getDTE(ct)
     value = pi.marketValue # value = intrinsic + extrinsic
@@ -366,7 +366,7 @@ def getThetaDTE(pi: PortfolioItem,
         num = 1 if isinstance(ct, Option) else 4
         underlying_price = getMarketPrice(ct.symbol, num)
     if value is None:
-        return (0.0, 0.0, dte, underlying_price)
+        return (0.0, 0.0, 0.0, dte, underlying_price)
     # IB's model theta:
     daily_theta_decay = 0.0
     if gr is not None and gr.theta is not None:
@@ -381,7 +381,7 @@ def getThetaDTE(pi: PortfolioItem,
             value -= (underlying_price - ct.strike) * float(ct.multiplier) * pi.position
     avg_daily_theta_decay = (- value) / (dte + 1) if dte >= 0 else 0.0
     #print(pi.position, getName(ct), oldvalue, value, dte, avg_daily_theta_decay)
-    return (avg_daily_theta_decay, daily_theta_decay, dte, underlying_price)
+    return (value, avg_daily_theta_decay, daily_theta_decay, dte, underlying_price)
 
 # Debug output of portfolio data:
 def showPortfolioDebug(console: Console, portfolio: list[PortfolioItem]) -> None:
@@ -415,7 +415,8 @@ def isITM(contract: Contract, underlying_price: float | None) -> bool:
 def add_summary(name: str, values: list[float], curr: str, show_options_details: bool,
                 show_prices: bool, table: Table,
                 underlying_price: str, expiration: str | None) -> None:
-    (sum_costbasis, sum_marketValue, sum_avg_theta, sum_theta, sum_delta_curr) = values
+    (sum_costbasis, sum_marketValue, sum_extrinsic, sum_avg_theta,
+        sum_theta, sum_delta_curr) = values
     pnl = sum_marketValue - sum_costbasis
     pnl_percent = (pnl / abs(sum_costbasis)) * 100.0 if sum_costbasis != 0.0 else 0.0
     row: list[str] = ['', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.1f}%',
@@ -424,7 +425,9 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
         row.extend(['', ''])
     if show_options_details:
         dte = getDTE(None, expiration) if expiration is not None else ''
-        row.extend([f'{dte}', f'{sum_avg_theta:.2f} {curr}', underlying_price, ''])
+        sum_avg_theta_str = f'{sum_avg_theta:.2f} {curr}' if sum_avg_theta != 0.0 else ''
+        sum_extrinsic_str = f'{sum_extrinsic:.2f} {curr}' if sum_extrinsic != 0.0 else ''
+        row.extend([f'{dte}', sum_avg_theta_str, sum_extrinsic_str, underlying_price, ''])
         if config.use_market_data_subscription:
             sum_delta_curr_str = ''
             if sum_delta_curr != 0.0:
@@ -685,6 +688,7 @@ def showPortfolio(console: Console, account: str,
     if show_options_details:
         table.add_column('DTE', justify='right')
         table.add_column('avg daily theta', justify='right')
+        table.add_column('extrinsic', justify='right')
         table.add_column('price undly', justify='right')
         table.add_column('ITM', justify='right')
         if config.use_market_data_subscription:
@@ -717,18 +721,21 @@ def showPortfolio(console: Console, account: str,
         if show_prices:
             row.extend([f'{pi.marketPrice:.2f} {curr}', f'{pi.averageCost:.2f} {curr}'])
         avg_theta = 0.0
-        values: list[float] = [costbasis, pi.marketValue, avg_theta, 0.0, 0.0]
+        values: list[float] = [costbasis, pi.marketValue, 0.0, avg_theta, 0.0, 0.0]
         gr: OptionComputation | None = None
         if show_options_details:
             ct = pi.contract
             num = getDataCacheNum(ct)
             gr = getGreeksCache(name, num)
-            (avg_theta, theta, dte, undl_price) = getThetaDTE(pi, gr)
-            values[2] = avg_theta # XXX ugly
-            values[3] = theta     # XXX ugly
-            ITM = 'Yes' if isITM(ct, undl_price) else ''
+            (extrinsic, avg_theta, theta, dte, undl_price) = getThetaDTE(pi, gr)
+            values[2] = extrinsic # XXX ugly
+            values[3] = avg_theta # XXX ugly
+            values[4] = theta     # XXX ugly
+            avg_theta_str = f'{avg_theta:.2f} {curr}' if avg_theta != 0.0 else ''
+            extrinsic_str = f'{extrinsic:.2f} {curr}' if extrinsic != 0.0 else ''
             undl_price_str = format_float(undl_price, curr)
-            row.extend([f'{dte}', f'{avg_theta:.2f} {curr}', undl_price_str, ITM])
+            ITM = 'Yes' if isITM(ct, undl_price) else ''
+            row.extend([f'{dte}', avg_theta_str, extrinsic_str, undl_price_str, ITM])
             if gr is not None:
                 theta_str = f'{theta:.2f} {curr}' if theta != 0.0 else ''
                 iv_str = f'{gr.impliedVol * 100.0:.1f} %' if gr.impliedVol is not None else ''
@@ -737,7 +744,7 @@ def showPortfolio(console: Console, account: str,
                 if gr.delta is not None and undl_price is not None:
                     delta_curr = gr.delta * undl_price * float(ct.multiplier) * pi.position
                     delta_curr_str = f'{delta_curr:.0f} {curr}'
-                    values[4] = delta_curr # XXX ugly
+                    values[5] = delta_curr # XXX ugly
                 gamma = f'{gr.gamma:.5f}' if gr.gamma is not None else ''
                 vega = f'{gr.vega:.4f}' if gr.vega is not None else ''
                 row.extend([theta_str, iv_str, delta, delta_curr_str, gamma, vega])
