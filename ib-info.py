@@ -427,7 +427,7 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
         dte = getDTE(None, expiration) if expiration is not None else ''
         sum_avg_theta_str = f'{sum_avg_theta:.2f} {curr}' if sum_avg_theta != 0.0 else ''
         sum_extrinsic_str = f'{sum_extrinsic:.2f} {curr}' if sum_extrinsic != 0.0 else ''
-        row.extend([f'{dte}', sum_avg_theta_str, sum_extrinsic_str, underlying_price, ''])
+        row.extend([f'{dte}', sum_avg_theta_str, sum_extrinsic_str, underlying_price, '', ''])
         if config.use_market_data_subscription:
             sum_delta_curr_str = ''
             if sum_delta_curr != 0.0:
@@ -690,6 +690,7 @@ def showPortfolio(console: Console, account: str,
         table.add_column('avg daily theta', justify='right')
         table.add_column('extrinsic', justify='right')
         table.add_column('price undly', justify='right')
+        table.add_column('% strike', justify='right')
         table.add_column('ITM', justify='right')
         if config.use_market_data_subscription:
             table.add_column('daily theta', justify='right')
@@ -734,8 +735,13 @@ def showPortfolio(console: Console, account: str,
             avg_theta_str = f'{avg_theta:.2f} {curr}' if avg_theta != 0.0 else ''
             extrinsic_str = f'{extrinsic:.2f} {curr}' if extrinsic != 0.0 else ''
             undl_price_str = format_float(undl_price, curr)
+            distance_strike_str = ''
+            if undl_price is not None:
+                distance_strike = (undl_price - ct.strike) / ct.strike
+                distance_strike_str = f'{distance_strike*100:.1f} %'
             ITM = 'Yes' if isITM(ct, undl_price) else ''
-            row.extend([f'{dte}', avg_theta_str, extrinsic_str, undl_price_str, ITM])
+            row.extend([f'{dte}', avg_theta_str, extrinsic_str, undl_price_str,
+                        distance_strike_str, ITM])
             if gr is not None:
                 theta_str = f'{theta:.2f} {curr}' if theta != 0.0 else ''
                 iv_str = f'{gr.impliedVol * 100.0:.1f} %' if gr.impliedVol is not None else ''
