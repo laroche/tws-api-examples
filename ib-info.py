@@ -54,10 +54,11 @@
 # - Check if print() -> console.print() is complete.
 # - Add to options output:
 #   - delta, gamma, theta, vega values
-#     - add percent distance from current underlying
 #     - Why are vega/theta values of -2.0 maybe not valid?
 #       I assume this is TWS having wrong data on weekends, switching tabs
 #       in TWS seems to clear this.
+#   - Add PoP, breakeven, buffer. (PoT, P50?)
+#   - Does current ann. yield make sense for long options?
 #   - list notional value of all stock option short puts if assigned
 #     Show also needed cash as percentage of all available cash.
 #     Also account for spreads instead of naked puts.
@@ -427,7 +428,8 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
         dte = getDTE(None, expiration) if expiration is not None else ''
         sum_avg_theta_str = f'{sum_avg_theta:.2f} {curr}' if sum_avg_theta != 0.0 else ''
         sum_extrinsic_str = f'{sum_extrinsic:.2f} {curr}' if sum_extrinsic != 0.0 else ''
-        row.extend([f'{dte}', sum_avg_theta_str, sum_extrinsic_str, underlying_price, '', ''])
+        row.extend([f'{dte}', sum_avg_theta_str, sum_extrinsic_str, underlying_price,
+                    '', '', '', ''])
         if config.use_market_data_subscription:
             sum_delta_curr_str = ''
             if sum_delta_curr != 0.0:
@@ -692,6 +694,8 @@ def showPortfolio(console: Console, account: str,
         table.add_column('price undly', justify='right')
         table.add_column('% strike', justify='right')
         table.add_column('ITM', justify='right')
+        table.add_column('yield', justify='right')
+        table.add_column('ann. yield', justify='right')
         if config.use_market_data_subscription:
             table.add_column('daily theta', justify='right')
             table.add_column('IV', justify='right')
@@ -740,8 +744,15 @@ def showPortfolio(console: Console, account: str,
                 distance_strike = (undl_price - ct.strike) / ct.strike
                 distance_strike_str = f'{distance_strike*100:.1f} %'
             ITM = 'Yes' if isITM(ct, undl_price) else ''
+            (yield_str, ann_yield_str) = ('', '')
+            if pi.marketValue is not None:
+                notional_value = pi.position * ct.strike * float(ct.multiplier)
+                pyield = pi.marketValue / notional_value
+                yield_str = f'{pyield*100:.1f} %'
+                ann_yield = pyield / max(dte + 1, 1) * 365.0
+                ann_yield_str = f'{ann_yield*100:.1f} %'
             row.extend([f'{dte}', avg_theta_str, extrinsic_str, undl_price_str,
-                        distance_strike_str, ITM])
+                        distance_strike_str, ITM, yield_str, ann_yield_str])
             if gr is not None:
                 theta_str = f'{theta:.2f} {curr}' if theta != 0.0 else ''
                 iv_str = f'{gr.impliedVol * 100.0:.1f} %' if gr.impliedVol is not None else ''
