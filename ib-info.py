@@ -350,7 +350,8 @@ def getDTE(contract: Contract | None, expiration: str | None = None) -> int:
     return dte.days
 
 # Return average daily theta decay, DTE and underlying_price:
-def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float, int, float | None]:
+def getThetaDTE(pi: PortfolioItem,
+                gr: OptionComputation | None) -> tuple[float, float, int, float | None]:
     ct = pi.contract
     dte = getDTE(ct)
     value = pi.marketValue # value = intrinsic + extrinsic
@@ -365,11 +366,11 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
         num = 1 if isinstance(ct, Option) else 4
         underlying_price = getMarketPrice(ct.symbol, num)
     if value is None:
-        return (0.0, dte, underlying_price)
-    # Prefer IB's model theta:
+        return (0.0, 0.0, dte, underlying_price)
+    # IB's model theta:
+    daily_theta_decay = 0.0
     if gr is not None and gr.theta is not None:
         daily_theta_decay = gr.theta * float(ct.multiplier) * pi.position
-        return (daily_theta_decay, dte, underlying_price)
     # Compute (average/dumb) theta decay ourselves:
     #oldvalue = value
     if underlying_price is not None:
@@ -380,7 +381,7 @@ def getThetaDTE(pi: PortfolioItem, gr: OptionComputation | None) -> tuple[float,
             value -= (underlying_price - ct.strike) * float(ct.multiplier) * pi.position
     avg_daily_theta_decay = (- value) / (dte + 1) if dte >= 0 else 0.0
     #print(pi.position, getName(ct), oldvalue, value, dte, avg_daily_theta_decay)
-    return (avg_daily_theta_decay, dte, underlying_price)
+    return (avg_daily_theta_decay, daily_theta_decay, dte, underlying_price)
 
 # Debug output of portfolio data:
 def showPortfolioDebug(console: Console, portfolio: list[PortfolioItem]) -> None:
@@ -414,7 +415,7 @@ def isITM(contract: Contract, underlying_price: float | None) -> bool:
 def add_summary(name: str, values: list[float], curr: str, show_options_details: bool,
                 show_prices: bool, table: Table,
                 underlying_price: str, expiration: str | None) -> None:
-    (sum_costbasis, sum_marketValue, sum_theta, sum_delta_curr) = values
+    (sum_costbasis, sum_marketValue, sum_avg_theta, sum_theta, sum_delta_curr) = values
     pnl = sum_marketValue - sum_costbasis
     pnl_percent = (pnl / abs(sum_costbasis)) * 100.0 if sum_costbasis != 0.0 else 0.0
     row: list[str] = ['', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.1f}%',
@@ -423,12 +424,12 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
         row.extend(['', ''])
     if show_options_details:
         dte = getDTE(None, expiration) if expiration is not None else ''
-        row.extend([f'{dte}', f'{sum_theta:.2f} {curr}', underlying_price, ''])
+        row.extend([f'{dte}', f'{sum_avg_theta:.2f} {curr}', underlying_price, ''])
         if config.use_market_data_subscription:
             sum_delta_curr_str = ''
             if sum_delta_curr != 0.0:
                 sum_delta_curr_str = f'{sum_delta_curr:.0f} {curr}'
-            row.extend(['', '', sum_delta_curr_str, '', ''])
+            row.extend([f'{sum_theta:.2f} {curr}', '', '', sum_delta_curr_str, '', ''])
     table.add_row(*row)
 
 def getDataCacheNum(contract: Contract) -> int:
@@ -597,6 +598,7 @@ def getOptionstratURL(symbol: str, stockposition: float | None,
     url = f'https://optionstrat.com/build/custom/{symbol}/'
     # Add possible stock position:
     if stockposition is not None:
+        # we round number of stocks from float (fractional stocks) to int here:
         url += f'{symbol}x{round(stockposition)}'
     # Add option positions into URL:
     for pi in options:
@@ -682,13 +684,11 @@ def showPortfolio(console: Console, account: str,
         table.add_column('average price', justify='right')
     if show_options_details:
         table.add_column('DTE', justify='right')
-        if config.use_market_data_subscription:
-            table.add_column('daily theta', justify='right')
-        else:
-            table.add_column('avg daily theta', justify='right')
+        table.add_column('avg daily theta', justify='right')
         table.add_column('price undly', justify='right')
         table.add_column('ITM', justify='right')
         if config.use_market_data_subscription:
+            table.add_column('daily theta', justify='right')
             table.add_column('IV', justify='right')
             table.add_column('delta', justify='right')
             table.add_column('delta $', justify='right')
@@ -716,33 +716,35 @@ def showPortfolio(console: Console, account: str,
                f'{pi.marketValue:.0f} {curr}', f'{costbasis:.0f} {curr}']
         if show_prices:
             row.extend([f'{pi.marketPrice:.2f} {curr}', f'{pi.averageCost:.2f} {curr}'])
-        theta = 0.0
-        values: list[float] = [costbasis, pi.marketValue, theta, 0.0]
+        avg_theta = 0.0
+        values: list[float] = [costbasis, pi.marketValue, avg_theta, 0.0, 0.0]
         gr: OptionComputation | None = None
         if show_options_details:
             ct = pi.contract
             num = getDataCacheNum(ct)
             gr = getGreeksCache(name, num)
-            (theta, dte, undl_price) = getThetaDTE(pi, gr)
-            values[2] = theta # XXX ugly
+            (avg_theta, theta, dte, undl_price) = getThetaDTE(pi, gr)
+            values[2] = avg_theta # XXX ugly
+            values[3] = theta     # XXX ugly
             ITM = 'Yes' if isITM(ct, undl_price) else ''
             undl_price_str = format_float(undl_price, curr)
-            row.extend([f'{dte}', f'{theta:.2f} {curr}', undl_price_str, ITM])
+            row.extend([f'{dte}', f'{avg_theta:.2f} {curr}', undl_price_str, ITM])
             if gr is not None:
+                theta_str = f'{theta:.2f} {curr}' if theta != 0.0 else ''
                 iv_str = f'{gr.impliedVol * 100.0:.1f} %' if gr.impliedVol is not None else ''
+                delta = f'{gr.delta * 100.0:.1f}' if gr.delta is not None else ''
                 delta_curr_str = ''
                 if gr.delta is not None and undl_price is not None:
                     delta_curr = gr.delta * undl_price * float(ct.multiplier) * pi.position
                     delta_curr_str = f'{delta_curr:.0f} {curr}'
-                    values[3] = delta_curr # XXX ugly
+                    values[4] = delta_curr # XXX ugly
                 gamma = f'{gr.gamma:.5f}' if gr.gamma is not None else ''
                 vega = f'{gr.vega:.4f}' if gr.vega is not None else ''
-                delta = f'{gr.delta * 100.0:.1f}' if gr.delta is not None else ''
-                row.extend([iv_str, delta, delta_curr_str, gamma, vega])
+                row.extend([theta_str, iv_str, delta, delta_curr_str, gamma, vega])
                     #, f'{gr.theta:.5f}'])
                     #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
             elif config.use_market_data_subscription:
-                row.extend(['', '', '', '', ''])
+                row.extend(['', '', '', '', '', ''])
             if ct.symbol not in summe_undl:
                 summe_undl[ct.symbol] = {}
             accumulate_values(summe_undl[ct.symbol], values, curr)
