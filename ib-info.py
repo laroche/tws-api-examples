@@ -475,7 +475,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         contracts.append(Forex(symbol)) # XXX exchange='IDEALPRO'
         #warn_once(logger, f'Fetching forex market price for {symbol}.')
     # add all (future) options to get greeks:
-    extra: list[tuple[str, str]] = []
+    extra: list[tuple[str, str, str]] = []
     for pi in portfolio:
         ct = pi.contract
         if isinstance(ct, (Option, FuturesOption)):
@@ -487,11 +487,17 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         # XXX This market price is only needed if option greeks are not provided
         # (which can also contain the underlying market price info).
         if isinstance(ct, Option) and (1, ct.symbol) not in data_cache:
-            if (ct.symbol, ct.currency) not in extra:
-                extra.append((ct.symbol, ct.currency))
-    for (symbol, currency) in extra:
+            if (ct.symbol, ct.currency, 'STOCK') not in extra:
+                extra.append((ct.symbol, ct.currency, 'STOCK'))
+        elif isinstance(ct, FuturesOption) and (4, ct.symbol) not in data_cache:
+            if (ct.symbol, ct.currency, 'FUTURE') not in extra:
+                extra.append((ct.symbol, ct.currency, 'FUTURE'))
+    for (symbol, currency, contract_type) in extra:
         #logger.warning(f'Fetching market price for {symbol}')
-        if symbol in US_INDEX_OPTIONS:
+        if contract_type == 'FUTURE':
+            # XXX contracts.append(Future(symbol, 'CME', currency))
+            pass
+        elif symbol in US_INDEX_OPTIONS:
             contracts.append(Index(symbol, 'CBOE', currency))
         elif symbol in EUREX_INDEX_OPTIONS:
             contracts.append(Index(symbol, 'EUREX', currency))
