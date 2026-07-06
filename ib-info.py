@@ -734,10 +734,10 @@ def showPortfolio(console: Console, account: str,
             ct = pi.contract
             num = getDataCacheNum(ct)
             gr = getGreeksCache(name, num)
-            (extrinsic, avg_theta, theta, dte, undl_price) = getThetaDTE(pi, gr)
-            values[2] = extrinsic # XXX ugly
-            values[3] = avg_theta # XXX ugly
-            values[4] = theta     # XXX ugly
+            (extrinsic, avg_theta, daily_theta, dte, undl_price) = getThetaDTE(pi, gr)
+            values[2] = extrinsic   # XXX ugly
+            values[3] = avg_theta   # XXX ugly
+            values[4] = daily_theta # XXX ugly
             avg_theta_str = f'{avg_theta:.2f} {curr}' if avg_theta != 0.0 else ''
             extrinsic_str = f'{extrinsic:.2f} {curr}' if extrinsic != 0.0 else ''
             undl_price_str = format_float(undl_price, curr)
@@ -757,7 +757,7 @@ def showPortfolio(console: Console, account: str,
             row.extend([f'{dte}', avg_theta_str, extrinsic_str, undl_price_str,
                         distance_strike_str, ITM, notional_value_str, yield_str, ann_yield_str])
             if gr is not None:
-                theta_str = f'{theta:.2f} {curr}' if theta != 0.0 else ''
+                daily_theta_str = f'{daily_theta:.2f} {curr}' if daily_theta != 0.0 else ''
                 iv_str = f'{gr.impliedVol * 100.0:.1f} %' if gr.impliedVol is not None else ''
                 delta = f'{gr.delta * 100.0:.1f}' if gr.delta is not None else ''
                 delta_curr_str = ''
@@ -767,9 +767,8 @@ def showPortfolio(console: Console, account: str,
                     values[5] = delta_curr # XXX ugly
                 gamma = f'{gr.gamma:.5f}' if gr.gamma is not None else ''
                 vega = f'{gr.vega:.4f}' if gr.vega is not None else ''
-                row.extend([theta_str, iv_str, delta, delta_curr_str, gamma, vega])
-                    #, f'{gr.theta:.5f}'])
-                    #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
+                row.extend([daily_theta_str, iv_str, delta, delta_curr_str, gamma, vega])
+                #f'{gr.optPrice:.2f}', f'{gr.undPrice:.4f}', f'{gr.pvDividend:.4f}'])
             elif config.use_market_data_subscription:
                 row.extend(['', '', '', '', '', ''])
             if ct.symbol not in summe_undl:
