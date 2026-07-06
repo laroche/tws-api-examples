@@ -757,9 +757,9 @@ def showPortfolio(console: Console, account: str,
             (yield_str, ann_yield_str) = ('', '')
             if pi.marketValue is not None:
                 pyield = pi.marketValue / notional_value
-                yield_str = f'{pyield*100:.1f} %'
+                yield_str = f'{pyield*100:.2f} %'
                 ann_yield = pyield / max(dte + 1, 1) * 365.0
-                ann_yield_str = f'{ann_yield*100:.1f} %'
+                ann_yield_str = f'{ann_yield*100:.2f} %'
             row.extend([f'{dte}', avg_theta_str, extrinsic_str, undl_price_str,
                         distance_strike_str, ITM, notional_value_str, yield_str, ann_yield_str])
             if gr is not None:
