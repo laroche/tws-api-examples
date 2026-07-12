@@ -332,22 +332,22 @@ def get_third_friday(yearmonth: str) -> str:
 # Return DTE (Days Til Expiration) for an option/future:
 #@lru_cache(maxsize=1024)
 def getDTE(contract: Contract | None, expiration: str | None = None) -> int:
+    name = getName(contract) if contract is not None else 'unknown'
     if contract is not None:
         expiration = contract.lastTradeDateOrContractMonth
     if expiration is None:
-        name = getName(contract) if contract is not None else 'unknown'
         raise ValueError(f'No expiration date provided for contract {name}')
         #XXX return -2
     if len(expiration) == 8:
         d = datetime.datetime.strptime(expiration, '%Y%m%d')
     elif len(expiration) == 6:
-        logger.warning('Monthly expiration date without exact day: %s', expiration)
+        logger.warning('Monthly expiration date for %s without exact day: %s', name, expiration)
         # XXX Is it correct to look up the third friday of the month?
         # XXX fetch the exact expiration via ib.reqContractDetailsAsync(contract)
         third_friday = get_third_friday(expiration)
         d = datetime.datetime.strptime(expiration + third_friday, '%Y%m%d')
     else:
-        logger.error('Wrong expiration date: %s', expiration)
+        logger.error('Wrong expiration date for %s: %s', name, expiration)
         raise ValueError(f'Expiration date ({expiration}) is unknown.')
     dte = d.date() - datetime.date.today()
     return dte.days
@@ -527,7 +527,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         print(f'runtime for qualifyContractsAsync({len(contracts)}): {time.time()-starttime:.2f}s')
     # Filter out None results and track original indices
     for (c, r) in [(c, r) for c, r in zip(contracts, results) if r is None]:
-        logger.warning('ib.qualifyContractsAsync() failed for %s', getName(c))
+        logger.warning('ib.qualifyContractsAsync() failed for %s (conId=%s)', getName(c), c.conId)
     valid: list[tuple[Contract, Any]] = \
         [(c, r) for c, r in zip(contracts, results) if r is not None]
     if not valid:
@@ -540,7 +540,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     for (_, contract), ticker in zip(valid, tickers):
         name = getName(contract)
         if ticker is None:
-            logger.warning('ib.reqTickersAsync() failed for %s', name)
+            logger.warning('ib.reqTickersAsync() failed for %s (conId=%s)', name, contract.conId)
             continue
         if isinstance(contract, (Stock, Index, Future, Forex)):
             marketprice = ticker.marketPrice()
