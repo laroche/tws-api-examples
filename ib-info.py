@@ -50,6 +50,7 @@
 # - Why is fetching data taking so long?
 # - We use local timzone. For DTE calculations we should use exchange timezone?
 #   Also check ib_async.util.time_to_tws().
+# - Return data in a pandas.DataFrame to decouple data collection from output.
 # - Check server time info against local time and warn on mismatch.
 # - Check if print() -> console.print() is complete.
 # - Add to options output:
@@ -420,7 +421,7 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
     (sum_costbasis, sum_marketValue, sum_extrinsic, sum_avg_theta,
         sum_theta, sum_delta_curr) = values
     pnl = sum_marketValue - sum_costbasis
-    pnl_percent = (pnl / abs(sum_costbasis)) * 100.0 if sum_costbasis != 0.0 else 0.0
+    pnl_percent = (pnl / abs(sum_costbasis)) * 100.0 if abs(sum_costbasis) != 0.0 else 0.0
     row: list[str] = ['', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.1f}%',
            f'{sum_marketValue:.0f} {curr}', f'{sum_costbasis:.0f} {curr}']
     if show_prices:
@@ -727,7 +728,7 @@ def showPortfolio(console: Console, account: str,
         else:
             mv = pi.marketValue if pi.marketValue is not None else 0.0
             costbasis = mv - pnl
-        pnl_percent = (pnl / abs(costbasis) * 100.0) if costbasis != 0.0 else 0.0
+        pnl_percent = (pnl / abs(costbasis) * 100.0) if abs(costbasis) != 0.0 else 0.0
         name = getName(pi.contract)
         row: list[str] = [f'{getPosition(pi)}', name, f'{pnl:.0f} {curr}', f'{pnl_percent:.0f}%',
                f'{pi.marketValue:.0f} {curr}', f'{costbasis:.0f} {curr}']
@@ -881,7 +882,6 @@ def showNotionalValue(console: Console, account: str,
             continue
         if ct.right != 'P' or pi.position >= 0.0: # not short put
             continue
-        curr = get_currency_symbol(ct.currency)
         nv = pi.position * ct.strike * float(ct.multiplier)
         da_nv = 0.0 # delta-adjusted notional value
         if config.use_market_data_subscription:
@@ -894,6 +894,7 @@ def showNotionalValue(console: Console, account: str,
                     first_output = True
                     console.print()
                 console.print(f'No delta value for {getPosition(pi)} {name}')
+        curr = get_currency_symbol(ct.currency)
         accumulate_values(sum_sp, (nv, da_nv), curr)
     # XXX Also add open trades into notional value calculation.
     if not sum_sp:
@@ -1009,6 +1010,10 @@ async def safe_connect(host: str, port: int, client_id: int, readonly: bool, acc
     ib = IB()
     try:
         await ib.connectAsync(host, port, clientId=client_id, readonly=readonly, account=account)
+        #await asyncio.wait_for(ib.connectAsync(...), timeout=10.0)
+    #except asyncio.TimeoutError:
+    #    logger.error("Connection timed out. Is TWS running and API port open?")
+    #    raise SystemExit(1)
     except ConnectionRefusedError as e:
         logger.error('API connection failed: ConnectionRefusedError: '
                      'Make sure API port on TWS/IBG is open.')
