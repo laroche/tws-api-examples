@@ -41,6 +41,7 @@
 # pylint: disable=R0902,R0912,R0913,R0914,R0915,R0917
 #
 # TODO:
+# - optionstrat output changes from SPX to SPXW. How to code this correctly?
 # - Make this also a web application. (streamlit)
 # - Translate all prices into Euro (base currency) as an option.
 # - Allow translation of output into different languages.
@@ -58,6 +59,7 @@
 #     - Why are vega/theta values of -2.0 maybe not valid?
 #       I assume this is TWS having wrong data on weekends, switching tabs
 #       in TWS seems to clear this.
+#   - Add warning if liquidity of an option is bad.
 #   - Add PoP, breakeven, buffer. (PoT, P50?)
 #   - Add summary for ann. yield, normal yield and notional value.
 #   - Does current ann. yield make sense for long options?
@@ -547,6 +549,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
             if isinstance(contract, Index) and (marketprice is None or util.isNan(marketprice)):
                 marketprice = ticker.close
             # XXX Should we also check ticker.midpoint() or ticker.last?
+            # XXX Also check against math.isfinite(marketprice)?
             if marketprice is None or util.isNan(marketprice):
                 warn_once(logger, f'Not getting market price for {name}.')
                 #print(ticker)
@@ -609,6 +612,8 @@ def getOptionsForUnderlying(symbol: str,
 def getOptionstratURL(symbol: str, stockposition: float | None,
                       options: list[PortfolioItem]) -> str:
     url = f'https://optionstrat.com/build/custom/{symbol}/'
+    if symbol == 'SPX':
+        symbol = 'SPXW'
     # Add possible stock position:
     if stockposition is not None:
         # we round number of stocks from float (fractional stocks) to int here:
