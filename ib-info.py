@@ -60,6 +60,7 @@
 #       I assume this is TWS having wrong data on weekends, switching tabs
 #       in TWS seems to clear this.
 #   - Add warning if liquidity of an option is bad.
+#   - Calculate underlying price from 0-DTE options: https://www.youtube.com/watch?v=rsNmmIDAB6A
 #   - Add PoP, breakeven, buffer. (PoT, P50?)
 #   - Add summary for ann. yield, normal yield and notional value.
 #   - Does current ann. yield make sense for long options?
@@ -887,20 +888,20 @@ def showNotionalValue(console: Console, account: str,
             continue
         if ct.right != 'P' or pi.position >= 0.0: # not short put
             continue
-        nv = pi.position * ct.strike * float(ct.multiplier)
+        notional_value = pi.position * ct.strike * float(ct.multiplier)
         da_nv = 0.0 # delta-adjusted notional value
         if config.use_market_data_subscription:
             name = getName(ct)
             gr = getGreeksCache(name, getDataCacheNum(ct))
             if gr is not None and gr.delta is not None:
-                da_nv = nv * (- gr.delta)
+                da_nv = notional_value * (- gr.delta)
             else:
                 if not first_output:
                     first_output = True
                     console.print()
                 console.print(f'No delta value for {getPosition(pi)} {name}')
         curr = get_currency_symbol(ct.currency)
-        accumulate_values(sum_sp, (nv, da_nv), curr)
+        accumulate_values(sum_sp, (notional_value, da_nv), curr)
     # XXX Also add open trades into notional value calculation.
     if not sum_sp:
         return
