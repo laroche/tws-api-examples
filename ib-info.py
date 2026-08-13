@@ -361,12 +361,12 @@ def getThetaDTE(pi: PortfolioItem,
     ct = pi.contract
     dte = getDTE(ct)
     value = pi.marketValue # value = intrinsic + extrinsic
+    underlying_price: float | None
     if gr is not None and gr.undPrice is not None:
-        underlying_price: float | None = gr.undPrice
+        underlying_price = gr.undPrice
         # Add price into our cache:
-        if underlying_price is not None: # XXX this check is only needed for mypy
-            num = 1 if isinstance(ct, Option) else 4
-            addMarketPrice(ct.symbol, num, underlying_price)
+        num = 1 if isinstance(ct, Option) else 4
+        addMarketPrice(ct.symbol, num, underlying_price)
     else:
         # Stock/Index or Future?
         num = 1 if isinstance(ct, Option) else 4
