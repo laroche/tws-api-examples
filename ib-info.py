@@ -120,7 +120,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-@dataclass
+@dataclass(slots=True)
 class Config:
     # Many subscriptions of market data are only available within the
     # TWS, but not for the (python) API. So by default, we set
