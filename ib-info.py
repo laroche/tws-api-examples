@@ -101,6 +101,7 @@
 
 from dataclasses import dataclass
 from typing import Any
+from enum import IntEnum
 from functools import lru_cache
 import sys
 import os
@@ -442,19 +443,25 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
             row.extend([f'{sum_theta:.2f} {curr}', '', '', sum_delta_curr_str, '', ''])
     table.add_row(*row)
 
-def getDataCacheNum(contract: Contract) -> int:
+class CacheKind(IntEnum):
+    STOCK_INDEX = 1
+    OPTION = 2
+    FUTURES_OPTION = 3
+    FUTURE = 4
+    FOREX = 5
+
+def get_cache_kind(contract: Contract) -> CacheKind:
     if isinstance(contract, (Stock, Index)):
-        return 1
+        return CacheKind.STOCK_INDEX
     if isinstance(contract, Option):
-        return 2
+        return CacheKind.OPTION
     if isinstance(contract, FuturesOption):
-        return 3
+        return CacheKind.FUTURES_OPTION
     if isinstance(contract, Future):
-        return 4
+        return CacheKind.FUTURE
     if isinstance(contract, Forex):
-        return 5
-    raise ValueError('Unknown contract instance.')
-    #return 0
+        return CacheKind.FOREX
+    raise ValueError(f'Unknown contract type: {type(contract).__name__}')
 
 async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     cache: dict[tuple[int, str], bool] = {}
@@ -484,7 +491,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         ct = pi.contract
         if isinstance(ct, (Option, FuturesOption)):
             name = getName(ct)
-            num = getDataCacheNum(ct)
+            num = get_cache_kind(ct)
             if (num, name) not in cache and (num, name) not in greeks_cache:
                 cache[(num, name)] = True
                 contracts.append(ct)
@@ -557,7 +564,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                 #print(f'{ticker.last} {ticker.midpoint()}')
             else:
                 #print(name, 'has market price', marketprice)
-                num = getDataCacheNum(contract)
+                num = get_cache_kind(contract)
                 addMarketPrice(name, num, marketprice)
                 if isinstance(contract, Forex):
                     pair = name + 'USD'
@@ -577,7 +584,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                 #if gr is None:
                 #    warn_once(logger, f'Still not getting greeks for {name}.')
             else:
-                num = getDataCacheNum(contract)
+                num = get_cache_kind(contract)
                 greeks_cache[(num, name)] = gr
 
 def getAccountPortfolio(account: str, portfolio: list[PortfolioItem]) -> list[PortfolioItem]:
@@ -745,7 +752,7 @@ def showPortfolio(console: Console, account: str,
         gr: OptionComputation | None = None
         if show_options_details:
             ct = pi.contract
-            num = getDataCacheNum(ct)
+            num = get_cache_kind(ct)
             gr = getGreeksCache(name, num)
             (extrinsic, avg_theta, daily_theta, dte, undl_price) = getThetaDTE(pi, gr)
             values[2] = extrinsic   # XXX ugly
@@ -818,12 +825,12 @@ def showPortfolio(console: Console, account: str,
 
 def getUnderlyingPrice(contract: Contract) -> float | None:
     name = getName(contract)
-    num = getDataCacheNum(contract)
+    num = get_cache_kind(contract)
     gr = getGreeksCache(name, num)
     if gr is not None and gr.undPrice is not None:
         return gr.undPrice
     # Stock/Index or Future?
-    num = 1 if isinstance(contract, Option) else 4
+    num = CacheKind.STOCK_INDEX if isinstance(contract, Option) else CacheKind.FUTURE
     return getMarketPrice(contract.symbol, num)
 
 # Output list of options which expire in less than 'dte' days:
@@ -892,7 +899,7 @@ def showNotionalValue(console: Console, account: str,
         da_nv = 0.0 # delta-adjusted notional value
         if config.use_market_data_subscription:
             name = getName(ct)
-            gr = getGreeksCache(name, getDataCacheNum(ct))
+            gr = getGreeksCache(name, get_cache_kind(ct))
             if gr is not None and gr.delta is not None:
                 da_nv = notional_value * (- gr.delta)
             else:
