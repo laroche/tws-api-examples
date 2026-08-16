@@ -46,7 +46,22 @@
 # - Translate all prices into Euro (base currency) as an option.
 # - Allow translation of output into different languages.
 # - For currency overview futures are not yet included.
-# - Allow for nice/modern config file.
+# - Allow for nice/modern config file. tomllib?
+#   # ib-info.toml
+#   [connection]
+#   host = "127.0.0.1"
+#   port = 7496
+#   client_id = 0
+#
+#   [display]
+#   two_digit_years = false
+#   short_expire_format = false
+#   margin_red = 50.0
+#   margin_yellow = 30.0
+#
+#   [market_data]
+#   use_subscription = false
+#   type = 2
 # - Add a 'C' to closing prices on the output.
 # - Why is fetching data taking so long?
 # - We use local timzone. For DTE calculations we should use exchange timezone?
@@ -298,8 +313,8 @@ def getGreeksCache(name: str, num: int) -> OptionComputation | None:
 
 # Strip '.0' at end of string:
 def strip_decimal_zero(value: str) -> str:
-    return value[:-2] if value.endswith('.0') else value
-    #return f'{float(value):g}'
+    #return value[:-2] if value.endswith('.0') else value
+    return value.rstrip('0').rstrip('.')
 
 # Return position size as string:
 def getPosition(pi: PortfolioItem) -> str:
@@ -620,12 +635,13 @@ def getOptionsForUnderlying(symbol: str,
 def getOptionstratURL(symbol: str, stockposition: float | None,
                       options: list[PortfolioItem]) -> str:
     url = f'https://optionstrat.com/build/custom/{symbol}/'
-    if symbol == 'SPX':
-        symbol = 'SPXW'
+    os_symbol = symbol
+    if os_symbol == 'SPX':
+        os_symbol = 'SPXW'
     # Add possible stock position:
     if stockposition is not None:
         # we round number of stocks from float (fractional stocks) to int here:
-        url += f'{symbol}x{round(stockposition)}'
+        url += f'{os_symbol}x{round(stockposition)}'
     # Add option positions into URL:
     for pi in options:
         ct = pi.contract
@@ -633,7 +649,7 @@ def getOptionstratURL(symbol: str, stockposition: float | None,
             url += ','
         expiration = ct.lastTradeDateOrContractMonth[2:]
         n = round(pi.position)
-        name = f'.{symbol}{expiration}{ct.right}{getStrike(ct)}'
+        name = f'.{os_symbol}{expiration}{ct.right}{getStrike(ct)}'
         if n == -1:
             url += f'-{name}'
         elif n == 1:
@@ -1038,6 +1054,7 @@ async def safe_connect(host: str, port: int, client_id: int, readonly: bool, acc
         raise SystemExit(1) from e
     return ib
 
+# XXX too specific to US market
 def is_market_hours() -> bool:
     eastern = zoneinfo.ZoneInfo('US/Eastern')
     now = datetime.datetime.now(eastern)
