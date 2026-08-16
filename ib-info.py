@@ -313,23 +313,30 @@ def showAccountSummary(console: Console, accounts: list[str],
         if margin >= config.margin_red:
             console.print(f'[bold red]Warning: Account {account} uses margin of {margin_str}.[/]')
 
+class CacheKind(IntEnum):
+    STOCK_INDEX = 1
+    OPTION = 2
+    FUTURES_OPTION = 3
+    FUTURE = 4
+    FOREX = 5
+
 # Store market price and greeks of instruments into a dictionary:
-data_cache: dict[tuple[int, str], float] = {}
-greeks_cache: dict[tuple[int, str], OptionComputation] = {}
+data_cache: dict[tuple[CacheKind, str], float] = {}
+greeks_cache: dict[tuple[CacheKind, str], OptionComputation] = {}
 #currency_prices: dict[str, float] = {}
 
-def addMarketPrice(name: str, num: int, price: float) -> None:
+def addMarketPrice(name: str, num: CacheKind, price: float) -> None:
     if (num, name) not in data_cache:
         data_cache[(num, name)] = price
 
-def getMarketPrice(name: str, num: int) -> float | None:
+def getMarketPrice(name: str, num: CacheKind) -> float | None:
     if (num, name) in data_cache:
         return data_cache[(num, name)]
     warn_once(logger,
         f'Not getting market price for {name}. ITM/theta calculations might be wrong.')
     return None
 
-def getGreeksCache(name: str, num: int) -> OptionComputation | None:
+def getGreeksCache(name: str, num: CacheKind) -> OptionComputation | None:
     if (num, name) in greeks_cache:
         return greeks_cache[(num, name)]
     return None
@@ -393,13 +400,6 @@ def getDTE(contract: Contract | None, expiration: str | None = None) -> int:
         raise ValueError(f'Expiration date ({expiration}) is unknown.')
     dte = d.date() - datetime.date.today()
     return dte.days
-
-class CacheKind(IntEnum):
-    STOCK_INDEX = 1
-    OPTION = 2
-    FUTURES_OPTION = 3
-    FUTURE = 4
-    FOREX = 5
 
 # Return average daily theta decay, DTE and underlying_price:
 def getThetaDTE(pi: PortfolioItem,
@@ -511,7 +511,7 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         if isSTK(pi.contract):
             if pi.marketPrice is not None:
                 # XXX check if different values exist?
-                addMarketPrice(getName(pi.contract), 1, pi.marketPrice)
+                addMarketPrice(getName(pi.contract), CacheKind.STOCK_INDEX, pi.marketPrice)
                 #print('Adding', getName(pi.contract), 'with market price', pi.marketPrice)
     if not config.use_market_data_subscription:
         return
@@ -851,7 +851,7 @@ def showPortfolio(console: Console, account: str,
         table.add_section()
         for undl in sorted(summe_undl.keys()):
             for (curr, values) in summe_undl[undl].items():
-                undl_price_ = getMarketPrice(undl, 1) # XXX might not be stock
+                undl_price_ = getMarketPrice(undl, CacheKind.STOCK_INDEX) # XXX might not be stock
                 undl_price_str = format_float(undl_price_, curr)
                 add_summary(f'total {undl}', values, curr, show_options_details,
                     show_prices, table, undl_price_str, None)
@@ -1150,9 +1150,10 @@ Examples:
     parser.add_argument('--account', '-a',
         default=os.environ.get('IBKR_ACCOUNT', ''),
         help='Limit to specific account (default: all managed accounts)')
+    # use --no-readonly
     parser.add_argument('--readonly', '-r',
-        action='store_true',
-        help='Read-only mode (default: False)')
+        action=argparse.BooleanOptionalAction, default=True,
+        help='Connect in read-only mode (default: True)')
     parser.add_argument('--use-market-data', '-m',
         action='store_true',
         help='Use market data from IBKR (default: False)')
