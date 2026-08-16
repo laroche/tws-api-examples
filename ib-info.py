@@ -111,11 +111,10 @@
 # - Is a disconnect done properly for all error cases?
 # - add sqlite database for historical data?
 # - pi.marketValue, pi.averageCost, pi.marketPrice, ct.multiplier can be None
-# - Change from isinstance() to contract.secType with STK,IND,OPT,FUT,FOP,CASH
 #
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Final
 from enum import IntEnum
 from functools import lru_cache
 import sys
@@ -128,8 +127,9 @@ import datetime
 import argparse
 import asyncio
 
-from ib_async import (IB, FuturesOption, Option, AccountValue,
-    PortfolioItem, Contract, Stock, Index, Future, Forex, OptionComputation, util)
+# Option, Future, FuturesOption
+from ib_async import (IB, AccountValue, PortfolioItem, Contract, Stock,
+                      Index, Forex, OptionComputation, util)
 
 from rich.console import Console
 from rich.panel import Panel
@@ -175,7 +175,8 @@ config: Config = Config()
 
 # Futures and Futures-Options that are used for currency hedging
 # and should be displayed within an extra overview page:
-CURRENCY_SYMBOLS: set[str] = {'EUR', 'M6E', '6E'}
+#CURRENCY_SYMBOLS: Final[set[str]] = {'EUR', 'M6E', '6E'}
+CURRENCY_SYMBOLS: Final[frozenset[str]] = frozenset({'EUR', 'M6E', '6E'})
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -192,18 +193,40 @@ def warn_once(mylogger: logging.Logger, msg: str) -> None:
 #BASE = '€'
 
 # Convert currency name into short currency symbol:
-currency_conversion: dict[str, str] = {
-    'EUR': '€', 'USD': '$', 'GBP': '£', 'JPY': '¥'}
+currency_conversion: Final[dict[str, str]] = {
+    'EUR': '€', 'USD': '$', 'GBP': '£', 'JPY': '¥',
+    'CAD': 'C$', 'AUD': 'A$',
+}
 
 def get_currency_symbol(curr: str) -> str:
     return currency_conversion.get(curr, curr)
 
+def isSTK(contract: Contract) -> bool:
+    return contract.secType == 'STK'
+
+def isIND(contract: Contract) -> bool:
+    return contract.secType == 'IND'
+
+def isOPT(contract: Contract) -> bool:
+    return contract.secType == 'OPT'
+
+def isFOP(contract: Contract) -> bool:
+    return contract.secType == 'FOP'
+
+def isOPTorFOP(contract: Contract) -> bool:
+    return contract.secType in ('OPT', 'FOP')
+
+def isCASH(contract: Contract) -> bool:
+    return contract.secType == 'CASH'
+
 # XXX How can we automate detecting this list?
-US_INDEX_OPTIONS: set[str] = {'SPX', 'RUT', 'NDX'}
-EUREX_INDEX_OPTIONS: set[str] = {'DAX', 'V1X'}
+#US_INDEX_OPTIONS: Final[set[str]] = {'SPX', 'RUT', 'NDX'}
+US_INDEX_OPTIONS: Final[frozenset[str]] = frozenset({'SPX', 'RUT', 'NDX'})
+#EUREX_INDEX_OPTIONS: Final[set[str]] = {'DAX', 'V1X'}
+EUREX_INDEX_OPTIONS: Final[frozenset[str]] = frozenset({'DAX', 'V1X'})
 
 def is_index_option(contract: Contract) -> bool:
-    return (isinstance(contract, Option) and
+    return (isOPT(contract) and
         (contract.symbol in US_INDEX_OPTIONS or contract.symbol in EUREX_INDEX_OPTIONS))
 
 # Format a float output, smaller numbers get 4 decimals:
@@ -329,7 +352,7 @@ current_year: str | None = None
 
 # Return instrument name as string:
 def getName(contract: Contract) -> str:
-    if not isinstance(contract, (FuturesOption, Option)):
+    if not isOPTorFOP(contract):
         return contract.localSymbol
     # Options require some more work for an instrument name:
     expiration = contract.lastTradeDateOrContractMonth
@@ -371,21 +394,26 @@ def getDTE(contract: Contract | None, expiration: str | None = None) -> int:
     dte = d.date() - datetime.date.today()
     return dte.days
 
+class CacheKind(IntEnum):
+    STOCK_INDEX = 1
+    OPTION = 2
+    FUTURES_OPTION = 3
+    FUTURE = 4
+    FOREX = 5
+
 # Return average daily theta decay, DTE and underlying_price:
 def getThetaDTE(pi: PortfolioItem,
                 gr: OptionComputation | None) -> tuple[float, float, float, int, float | None]:
     ct = pi.contract
     dte = getDTE(ct)
     value = pi.marketValue # value = intrinsic + extrinsic
+    # Stock/Index or Future?
+    num = CacheKind.STOCK_INDEX if isOPT(ct) else CacheKind.FUTURE
     underlying_price: float | None
     if gr is not None and gr.undPrice is not None:
         underlying_price = gr.undPrice
-        # Add price into our cache:
-        num = 1 if isinstance(ct, Option) else 4
         addMarketPrice(ct.symbol, num, underlying_price)
     else:
-        # Stock/Index or Future?
-        num = 1 if isinstance(ct, Option) else 4
         underlying_price = getMarketPrice(ct.symbol, num)
     if value is None:
         return (0.0, 0.0, 0.0, dte, underlying_price)
@@ -458,32 +486,29 @@ def add_summary(name: str, values: list[float], curr: str, show_options_details:
             row.extend([f'{sum_theta:.2f} {curr}', '', '', sum_delta_curr_str, '', ''])
     table.add_row(*row)
 
-class CacheKind(IntEnum):
-    STOCK_INDEX = 1
-    OPTION = 2
-    FUTURES_OPTION = 3
-    FUTURE = 4
-    FOREX = 5
+SEC_TYPE_TO_CACHE_KIND: dict[str, CacheKind] = {
+    'STK': CacheKind.STOCK_INDEX,
+    'IND': CacheKind.STOCK_INDEX,
+    'OPT': CacheKind.OPTION,
+    'FOP': CacheKind.FUTURES_OPTION,
+    'FUT': CacheKind.FUTURE,
+    'CASH': CacheKind.FOREX,
+}
 
 def get_cache_kind(contract: Contract) -> CacheKind:
-    if isinstance(contract, (Stock, Index)):
-        return CacheKind.STOCK_INDEX
-    if isinstance(contract, Option):
-        return CacheKind.OPTION
-    if isinstance(contract, FuturesOption):
-        return CacheKind.FUTURES_OPTION
-    if isinstance(contract, Future):
-        return CacheKind.FUTURE
-    if isinstance(contract, Forex):
-        return CacheKind.FOREX
-    raise ValueError(f'Unknown contract type: {type(contract).__name__}')
+    try:
+        return SEC_TYPE_TO_CACHE_KIND[contract.secType]
+    #except KeyError:
+    #    raise ValueError(f'Unknown secType: {contract.secType!r}')
+    except KeyError as exc:
+        raise ValueError(f'Unknown secType: {contract.secType!r}') from exc
 
 async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
     cache: dict[tuple[int, str], bool] = {}
     # collect existing stock/future market prices:
     for pi in portfolio:
         # XXX future prices should also get added
-        if isinstance(pi.contract, Stock):
+        if isSTK(pi.contract):
             if pi.marketPrice is not None:
                 # XXX check if different values exist?
                 addMarketPrice(getName(pi.contract), 1, pi.marketPrice)
@@ -492,19 +517,20 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         return
     contracts: list[Contract] = []
     # add all forex pairs:
-    USD_QUOTE: set[str] = {'EUR', 'GBP', 'AUD', 'NZD', 'CAD'}
+    #USD_QUOTED_CURRENCIES: set[str] = {'EUR', 'GBP', 'AUD', 'NZD', 'CAD'}
+    USD_QUOTED_CURRENCIES: Final[frozenset[str]] = frozenset({'EUR', 'GBP', 'AUD', 'NZD', 'CAD'})
     needed_currencies: list[str] = sorted(list({p.contract.currency for p in portfolio \
         if p.contract.currency and p.contract.currency != 'USD'}))
     # XXX Add some base currency here to the list, e.g. EURUSD.
     for pair in needed_currencies:
-        symbol = f'{pair}USD' if pair in USD_QUOTE else f'USD{pair}'
+        symbol = f'{pair}USD' if pair in USD_QUOTED_CURRENCIES else f'USD{pair}'
         contracts.append(Forex(symbol)) # XXX exchange='IDEALPRO'
         #warn_once(logger, f'Fetching forex market price for {symbol}.')
     # add all (future) options to get greeks:
     extra: list[tuple[str, str, str]] = []
     for pi in portfolio:
         ct = pi.contract
-        if isinstance(ct, (Option, FuturesOption)):
+        if isOPTorFOP(ct):
             name = getName(ct)
             num = get_cache_kind(ct)
             if (num, name) not in cache and (num, name) not in greeks_cache:
@@ -512,10 +538,10 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                 contracts.append(ct)
         # XXX This market price is only needed if option greeks are not provided
         # (which can also contain the underlying market price info).
-        if isinstance(ct, Option) and (1, ct.symbol) not in data_cache:
+        if isOPT(ct) and (CacheKind.STOCK_INDEX, ct.symbol) not in data_cache:
             if (ct.symbol, ct.currency, 'STOCK') not in extra:
                 extra.append((ct.symbol, ct.currency, 'STOCK'))
-        elif isinstance(ct, FuturesOption) and (4, ct.symbol) not in data_cache:
+        elif isFOP(ct) and (CacheKind.FUTURE, ct.symbol) not in data_cache:
             if (ct.symbol, ct.currency, 'FUTURE') not in extra:
                 extra.append((ct.symbol, ct.currency, 'FUTURE'))
     for (symbol, currency, contract_type) in extra:
@@ -567,9 +593,9 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
         if ticker is None:
             logger.warning('ib.reqTickersAsync() failed for %s (conId=%s)', name, contract.conId)
             continue
-        if isinstance(contract, (Stock, Index, Future, Forex)):
+        if contract.secType in ('STK', 'IND', 'FUT', 'CASH'):
             marketprice = ticker.marketPrice()
-            if isinstance(contract, Index) and (marketprice is None or util.isNan(marketprice)):
+            if isIND(contract) and (marketprice is None or util.isNan(marketprice)):
                 marketprice = ticker.close
             # XXX Should we also check ticker.midpoint() or ticker.last?
             # XXX Also check against math.isfinite(marketprice)?
@@ -581,12 +607,12 @@ async def getPortfolioData(ib: IB, portfolio: list[PortfolioItem]) -> None:
                 #print(name, 'has market price', marketprice)
                 num = get_cache_kind(contract)
                 addMarketPrice(name, num, marketprice)
-                if isinstance(contract, Forex):
+                if isCASH(contract):
                     pair = name + 'USD'
                     #currency_prices[pair] = marketprice
                     s = format_float(marketprice, pair)
                     logger.warning('Adding forex conversion %s = %s', pair, s)
-        elif isinstance(contract, (FuturesOption, Option)):
+        elif isOPTorFOP(contract):
             gr = ticker.modelGreeks
             if gr is None:
                 warn_once(logger, f'Not getting greeks for {name}.')
@@ -606,11 +632,11 @@ def getAccountPortfolio(account: str, portfolio: list[PortfolioItem]) -> list[Po
     return [pi for pi in portfolio if pi.account == account]
 
 def getOptionPortfolio(accountportfolio: list[PortfolioItem]) -> list[PortfolioItem]:
-    return [pi for pi in accountportfolio if isinstance(pi.contract, (Option, FuturesOption))]
+    return [pi for pi in accountportfolio if isOPTorFOP(pi.contract)]
 
 def getStockPosition(symbol: str, accountportfolio: list[PortfolioItem]) -> float | None:
     for pi in accountportfolio:
-        if not isinstance(pi.contract, Stock) or pi.contract.symbol != symbol:
+        if not isSTK(pi.contract) or pi.contract.symbol != symbol:
             continue
         return pi.position
     return None
@@ -619,7 +645,7 @@ def getOptionsUnderlying(accountportfolio: list[PortfolioItem]) -> dict[str, boo
     underlyings: dict[str, bool] = {}
     for pi in accountportfolio:
         # XXX add FuturesOption
-        if not isinstance(pi.contract, Option):
+        if not isOPT(pi.contract):
             continue
         underlyings[pi.contract.symbol] = True
     return underlyings
@@ -627,8 +653,7 @@ def getOptionsUnderlying(accountportfolio: list[PortfolioItem]) -> dict[str, boo
 def getOptionsForUnderlying(symbol: str,
                             accountportfolio: list[PortfolioItem]) -> list[PortfolioItem]:
     # XXX add FuturesOption
-    return [pi for pi in accountportfolio if isinstance(pi.contract, Option)
-            and symbol == pi.contract.symbol]
+    return [pi for pi in accountportfolio if isOPT(pi.contract) and symbol == pi.contract.symbol]
 
 # Create URL for one optionstrat view for one symbol with one possible stock position
 # and a list of option positions.
@@ -683,17 +708,15 @@ def showPortfolio(console: Console, account: str,
     pf: list[PortfolioItem] = []
     for pi in accountportfolio:
         ct = pi.contract
-        if non_options and isinstance(ct, (FuturesOption, Option)):
+        if non_options and isOPTorFOP(ct):
             continue
         if future_options:
-            if ((not isinstance(ct, FuturesOption) and not is_index_option(ct)) or
-                ct.symbol in CURRENCY_SYMBOLS):
+            if ((not isFOP(ct) and not is_index_option(ct)) or ct.symbol in CURRENCY_SYMBOLS):
                 continue
         if options:
-            if not isinstance(ct, Option) or is_index_option(ct):
+            if not isOPT(ct) or is_index_option(ct):
                 continue
-        if currency_options and (not isinstance(ct, FuturesOption)
-            or ct.symbol not in CURRENCY_SYMBOLS):
+        if currency_options and (not isFOP(ct) or ct.symbol not in CURRENCY_SYMBOLS):
             continue
         pf.append(pi)
     if not pf:
@@ -846,7 +869,7 @@ def getUnderlyingPrice(contract: Contract) -> float | None:
     if gr is not None and gr.undPrice is not None:
         return gr.undPrice
     # Stock/Index or Future?
-    num = CacheKind.STOCK_INDEX if isinstance(contract, Option) else CacheKind.FUTURE
+    num = CacheKind.STOCK_INDEX if isOPT(contract) else CacheKind.FUTURE
     return getMarketPrice(contract.symbol, num)
 
 # Output list of options which expire in less than 'dte' days:
@@ -907,7 +930,7 @@ def showNotionalValue(console: Console, account: str,
     for pi in optionportfolio:
         ct = pi.contract
         # Only options, but no future and no index options:
-        if not isinstance(ct, Option) or is_index_option(ct):
+        if not isOPT(ct) or is_index_option(ct):
             continue
         if ct.right != 'P' or pi.position >= 0.0: # not short put
             continue
@@ -1040,6 +1063,8 @@ async def safe_connect(host: str, port: int, client_id: int, readonly: bool, acc
     try:
         await ib.connectAsync(host, port, clientId=client_id, readonly=readonly, account=account)
         #await asyncio.wait_for(ib.connectAsync(...), timeout=10.0)
+        #async with asyncio.timeout(10.0):
+        #    await ib.connectAsync(...)
     #except asyncio.TimeoutError:
     #    logger.error("Connection timed out. Is TWS running and API port open?")
     #    raise SystemExit(1)
