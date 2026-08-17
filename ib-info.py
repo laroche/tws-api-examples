@@ -711,7 +711,7 @@ def showPortfolio(console: Console, account: str,
         if non_options and isOPTorFOP(ct):
             continue
         if future_options:
-            if ((not isFOP(ct) and not is_index_option(ct)) or ct.symbol in CURRENCY_SYMBOLS):
+            if (not isFOP(ct) and not is_index_option(ct)) or ct.symbol in CURRENCY_SYMBOLS:
                 continue
         if options:
             if not isOPT(ct) or is_index_option(ct):
