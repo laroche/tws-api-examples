@@ -972,6 +972,15 @@ def showNotionalValue(console: Console, account: str,
     if first_output:
         console.print()
 
+async def refresh_account(ib: IB, account: str) -> None:
+    """Restart account updates and wait for a fresh full snapshot."""
+    ib.client.reqAccountUpdates(False, account)
+    await ib.reqAccountUpdatesAsync(account)
+    for value in ib.accountValues(account):
+        if (str(getattr(value, 'tag', '')).lower() == 'accountready' and
+            str(getattr(value, 'value', '')).lower() in {'false', '0'}):
+            raise RuntimeError('IBKR account snapshot is not ready')
+
 # Debug output for accountValues:
 def printAccountValues(console: Console, accountValues: list[AccountValue]) -> None:
     console.print()
@@ -981,7 +990,8 @@ def printAccountValues(console: Console, accountValues: list[AccountValue]) -> N
 
 # Summary function to output all portfolio information of the account:
 async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = None,
-    accountSummary: list[AccountValue] | None = None) -> None:
+                       accountSummary: list[AccountValue] | None = None,
+                       refresh: bool = False) -> None:
     if accounts is None:
         accounts = ib.managedAccounts()
     if accountSummary is None:
@@ -993,7 +1003,9 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
         accountValues = ib.accountValues()
         printAccountValues(console, accountValues)
 
-    # XXX To refresh use: reqAccountUpdatesAsync()
+    if refresh:
+        for account in accounts:
+            await refresh_account(ib, account)
     portfolio = ib.portfolio()
     if not portfolio:
         # XXX allow empty portfolio? Check with paper trading...
