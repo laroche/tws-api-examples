@@ -37,10 +37,11 @@
 # - 3 == delayed
 # - 4 == delayed frozen
 #
-# pylint: disable=W0511,W0603,C0103,C0114,C0115,C0116,C0302
+# pylint: disable=W0511,W0603,W0706,W0718,C0103,C0114,C0115
 # pylint: disable=R0902,R0912,R0913,R0914,R0915,R0917
 #
 # TODO:
+# - https://supa.is/article/fix-ibkr-api-optionchain-underlyingconid-string-bug-2026
 # - optionstrat output changes from SPX to SPXW. How to code this correctly?
 # - Make this also a web application. (streamlit)
 # - Translate all prices into Euro (base currency) as an option.
@@ -220,8 +221,8 @@ def isCASH(contract: Contract) -> bool:
     return contract.secType == 'CASH'
 
 # XXX How can we automate detecting this list?
-#US_INDEX_OPTIONS: Final[set[str]] = {'SPX', 'RUT', 'NDX'}
-US_INDEX_OPTIONS: Final[frozenset[str]] = frozenset({'SPX', 'RUT', 'NDX'})
+#US_INDEX_OPTIONS: Final[set[str]] = {'SPX', 'SPXW', 'XSP', 'RUT', 'NDX', 'VIX'}
+US_INDEX_OPTIONS: Final[frozenset[str]] = frozenset({'SPX', 'SPXW', 'XSP', 'RUT', 'NDX', 'VIX'})
 #EUREX_INDEX_OPTIONS: Final[set[str]] = {'DAX', 'V1X'}
 EUREX_INDEX_OPTIONS: Final[frozenset[str]] = frozenset({'DAX', 'V1X'})
 
@@ -1063,14 +1064,16 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
 #        loop = asyncio.get_event_loop()
 #        if not loop.is_running():
 #            pass
+#            #logger.warning('event loop is not running')
+#        else:
+#            pass
+#            #logger.warning('event loop is running')
 #    except RuntimeError:
 #        logger.warning('Creating new event loop for thread')
-#        loop = asyncio.new_event_loop()
-#        asyncio.set_event_loop(loop)
+#        asyncio.set_event_loop(asyncio.new_event_loop())
 
 # Create a network connection to TWS/IBG:
 async def safe_connect(host: str, port: int, client_id: int, readonly: bool, account: str) -> IB:
-    #ensure_event_loop()
     ib = IB()
     try:
         await ib.connectAsync(host, port, clientId=client_id, readonly=readonly, account=account)
@@ -1104,6 +1107,7 @@ def is_market_hours() -> bool:
     return False
 
 async def myapp(args: argparse.Namespace) -> None:
+    #ensure_event_loop()
     ib = await safe_connect(args.host, args.port, args.client_id, args.readonly, args.account)
     #if not ib.isConnected():
     #    logger.error('Not connected: Need to restart TWS/IBG.')
