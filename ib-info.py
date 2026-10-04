@@ -130,7 +130,7 @@ import asyncio
 
 # Option, Future, FuturesOption
 from ib_async import (IB, AccountValue, PortfolioItem, Contract, Stock,
-                      Index, Forex, OptionComputation, util)
+                      Index, Forex, OptionComputation, OptionChain, util)
 
 from rich.console import Console
 from rich.panel import Panel
@@ -702,6 +702,10 @@ def showOptionstratURLs(console: Console, account: str,
         console.print(url)
     console.print()
 
+async def get_options_chain(ib: IB, contract: Contract) -> list[OptionChain]:
+    return await ib.reqSecDefOptParamsAsync(contract.symbol, contract.exchange, contract.secType,
+                                            contract.conId)
+
 # Output different portfolio views:
 def showPortfolio(console: Console, account: str,
     accountportfolio: list[PortfolioItem], non_options: bool = False, future_options: bool = False,
@@ -1034,6 +1038,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
 
     # Less information compared to showPortfolio():
     if config.verbose >= 3:
+        #await ib.reqPositionsAsync()
         positions = ib.positions()
         if positions:
             console.print()
@@ -1048,6 +1053,7 @@ async def showAccounts(ib: IB, console: Console, accounts: list[str] | None = No
         for t in trades:
             console.print(t)
 
+    #await ib.reqAllOpenOrdersAsync()
     orders = ib.orders()
     if orders:
         console.print()
